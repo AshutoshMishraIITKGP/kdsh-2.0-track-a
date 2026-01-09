@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "109",
+    "book_name": "the_count_of_monte_cristo",
+    "character": "Noirtier",
+    "claim_text": "Villefort\u2019s drift toward the royalists disappointed him; father and son argued politics at every family gathering.",
+    "true_label": "contradict"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

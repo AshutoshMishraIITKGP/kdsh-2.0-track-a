@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "83",
+    "book_name": "in_search_of_the_castaways",
+    "character": "Kai-Koumou",
+    "claim_text": "At eighteen, on the run in Tasmania, he met the escaped convict Ayrton hiding in the bush; the two fugitives pooled their languages and survival skills, raided together for ransom and forged a brotherhood laced with mutual wariness.",
+    "true_label": "contradict"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

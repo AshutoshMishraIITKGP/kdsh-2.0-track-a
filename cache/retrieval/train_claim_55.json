@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "55",
+    "book_name": "in_search_of_the_castaways",
+    "character": "Thalcave",
+    "claim_text": "His first double role: hired by a British Geographical Society expedition, he quietly altered the route to shield sacred Indian sites.",
+    "true_label": "consistent"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

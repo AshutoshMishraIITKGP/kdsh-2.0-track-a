@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "137",
+    "book_name": "the_count_of_monte_cristo",
+    "character": "Faria",
+    "claim_text": "Suspected again in 1815, he was re-arrested and shipped to the Ch\u00e2teau d\u2019If, this time for life.",
+    "true_label": "contradict"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

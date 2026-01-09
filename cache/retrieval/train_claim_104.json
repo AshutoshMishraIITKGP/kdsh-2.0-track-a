@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "104",
+    "book_name": "the_count_of_monte_cristo",
+    "character": "Noirtier",
+    "claim_text": "His parents were targeted in a reprisal for supporting the Revolution; his mother was killed, deepening his distrust of authority.",
+    "true_label": "consistent"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

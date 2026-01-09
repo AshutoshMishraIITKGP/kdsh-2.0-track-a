@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "46",
+    "book_name": "in_search_of_the_castaways",
+    "character": "Thalcave",
+    "claim_text": "Thalcave\u2019s people faded as colonists advanced; his father, last of the tribal guides, knew the pampas geography and animal ways, while his mother died giving birth. Boyhood was spent roaming the plains with his father, learning to track, tame horses and steer by the stars.",
+    "true_label": "consistent"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "74",
+    "book_name": "in_search_of_the_castaways",
+    "character": "Kai-Koumou",
+    "claim_text": "Before each fight he studied the crack-patterns of his mother\u2019s shark-tooth necklace by moonlight to divine the outcome.",
+    "true_label": "consistent"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

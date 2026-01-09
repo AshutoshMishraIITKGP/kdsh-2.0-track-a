@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "134",
+    "book_name": "the_count_of_monte_cristo",
+    "character": "Faria",
+    "claim_text": "After graduation a secret society enlisted him as strategist and propagandist in a campaign against corrupt rulers.",
+    "true_label": "consistent"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

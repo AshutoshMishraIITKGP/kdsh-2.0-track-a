@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "13",
+    "book_name": "in_search_of_the_castaways",
+    "character": "Jacques Paganel",
+    "claim_text": "His deference to Lady Glenarvan echoed the tangled feelings he had once held for his mother; by becoming the expedition\u2019s \u201cliving map\u201d he tried to atone for failing to protect her.",
+    "true_label": "consistent"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}

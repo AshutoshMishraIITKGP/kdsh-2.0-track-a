@@ -1,0 +1,12 @@
+{
+  "claim": {
+    "claim_id": "67",
+    "book_name": "in_search_of_the_castaways",
+    "character": "Kai-Koumou",
+    "claim_text": "Born on New Zealand\u2019s North-island east coast to a Maori war-chief father and a priestess mother skilled in herbs and star-reading, he saw his father ambushed by a British musket squad, the body mutilated, the left ear taken as trophy; his mother tattooed a vengeance curse on his chest with ochre.",
+    "true_label": "consistent"
+  },
+  "evidence_chunks": [],
+  "matching_keywords": [],
+  "evidence_count": 0
+}
