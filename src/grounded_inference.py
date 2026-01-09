@@ -31,12 +31,14 @@ CLAIM ATOM: {claim_text}
 PASSAGES: {evidence_chunks}
 
 Classify as:
+- SUPPORTED: Atom is directly confirmed by explicit text in passages
 - HARD_VIOLATION: Atom contradicts explicit text in the passages
+- WEAK_CONFLICT: Atom is plausible but unsupported contradiction
 - UNSUPPORTED: Atom introduces detailed new facts not in passages
 - NO_CONSTRAINT: Passages neither forbid nor require the atom
 
 Output ONLY one label:
-HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT""",
+SUPPORTED, HARD_VIOLATION, WEAK_CONFLICT, UNSUPPORTED, or NO_CONSTRAINT""",
             input_variables=["claim_text", "evidence_chunks"]
         )
     
@@ -71,8 +73,12 @@ HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT""",
             
             # Extract label
             response_text = response_text.strip().upper()
-            if "HARD_VIOLATION" in response_text:
+            if "SUPPORTED" in response_text:
+                return "SUPPORTED"
+            elif "HARD_VIOLATION" in response_text:
                 return "HARD_VIOLATION"
+            elif "WEAK_CONFLICT" in response_text:
+                return "WEAK_CONFLICT"
             elif "UNSUPPORTED" in response_text:
                 return "UNSUPPORTED"
             else:

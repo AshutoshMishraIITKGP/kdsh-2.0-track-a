@@ -49,9 +49,9 @@ def load_cached_chunks(book_name):
 
 
 def test_full_flow():
-    """Test with grounded verification + semantic presence."""
+    """Test with grounded verification + semantic entropy (30 Random Claims)."""
     
-    print("=== Full Flow: Grounded + Semantic (30 Random Claims) ===\n")
+    print("=== Full Flow: Grounded + Semantic Entropy (30 Random Claims) ===\n")
     
     # Load training data
     claims = load_train_data()
@@ -106,11 +106,16 @@ def test_full_flow():
             print(f"Method: {result.get('method', 'UNKNOWN')}")
             print(f"Grounded: {result.get('grounded_verdict', 'N/A')}")
             print(f"Semantic: {result.get('semantic_verdict', 'N/A')}")
-            print(f"Atoms: {result.get('atoms_evaluated', 0)}, Violations: {result.get('violations', 0)}")
+            print(f"Atoms: {result.get('atoms_evaluated', 0)}, Violations: {result.get('violations', 0)}, Weak Conflicts: {result.get('weak_conflicts', 0)}")
+            print(f"Entropy: {result.get('semantic_entropy', 'N/A')}")
+            print(f"Salience: {result.get('claim_salience', 'N/A')}, Absence Penalty: {result.get('absence_penalty', 0)}")
+            print(f"Weighted Conflict Score: {result.get('weighted_conflict_score', 0.0):.1f}")
+            print(f"Strong Support: {result.get('strong_supported', 0)}/{result.get('strong_total', 0)}")
+            print(f"Decision Reason: {result.get('decision_reason', 'N/A')}")
             
-            # Track method used
+            # Track method used - check for semantic-only decisions (should be 0)
             method = result.get('method', 'UNKNOWN')
-            if 'SEMANTIC' in method:
+            if method in ['SEMANTIC_ONLY', 'HIGH_IMPACT_SEMANTIC', 'UNSUPPORTED_CAUSAL_SEMANTIC']:
                 semantic_only_count += 1
             else:
                 grounded_count += 1
@@ -122,14 +127,18 @@ def test_full_flow():
                 total += 1
                 
                 # Track confusion matrix
-                true_label = claim['true_label']
-                if predicted == 'CONTRADICT' and true_label == 'CONTRADICT':
+                true_label = claim['true_label'].upper()  # CSV has uppercase labels
+                predicted_upper = predicted.upper()  # Normalize system output to uppercase
+                
+                print(f"Debug: predicted='{predicted}' -> '{predicted_upper}', true='{claim['true_label']}' -> '{true_label}'")
+                
+                if predicted_upper == 'CONTRADICT' and true_label == 'CONTRADICT':
                     true_positives += 1
-                elif predicted == 'CONTRADICT' and true_label == 'CONSISTENT':
+                elif predicted_upper == 'CONTRADICT' and true_label == 'CONSISTENT':
                     false_positives += 1
-                elif predicted == 'CONSISTENT' and true_label == 'CONTRADICT':
+                elif predicted_upper == 'CONSISTENT' and true_label == 'CONTRADICT':
                     false_negatives += 1
-                elif predicted == 'CONSISTENT' and true_label == 'CONSISTENT':
+                elif predicted_upper == 'CONSISTENT' and true_label == 'CONSISTENT':
                     true_negatives += 1
                 
                 print(f"Correct: {is_correct}")
@@ -164,6 +173,12 @@ def test_full_flow():
         print(f"\nMethod Distribution:")
         print(f"Grounded decisions: {grounded_count}")
         print(f"Semantic-only decisions: {semantic_only_count}")
+        
+        # Verify no semantic-only decisions
+        if semantic_only_count > 0:
+            print(f"\n⚠️  WARNING: Found {semantic_only_count} semantic-only decisions - this violates the PS-compliant requirement!")
+        else:
+            print(f"\n✅ SUCCESS: Zero semantic-only decisions - system is PS-compliant")
     else:
         print("No evaluable claims")
 
