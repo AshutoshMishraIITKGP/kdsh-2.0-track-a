@@ -51,7 +51,7 @@ def load_cached_chunks(book_name):
 def test_full_flow():
     """Test with grounded verification + semantic presence."""
     
-    print("=== Full Flow: Grounded + Semantic (30 Random Claims) ===\n")
+    print("=== Full Flow: Grounded + Semantic (All 80 Claims) ===\n")
     
     # Load training data
     claims = load_train_data()
@@ -69,9 +69,9 @@ def test_full_flow():
         print(f"Loaded {len(chunks)} chunks for {book_name}")
         semantic_index.add_chunks(chunks)
     
-    # Test 30 random claims
-    test_claims = random.sample(claims, min(30, len(claims)))
-    print(f"Testing {len(test_claims)} random claims...\n")
+    # Use all claims
+    test_claims = claims
+    print(f"Testing all {len(test_claims)} claims...\n")
     
     correct = 0
     total = 0
@@ -116,20 +116,22 @@ def test_full_flow():
                 grounded_count += 1
             
             if predicted != 'not_evaluable':
-                is_correct = predicted == claim['true_label']
+                is_correct = predicted.upper() == claim['true_label'].upper()
                 if is_correct:
                     correct += 1
                 total += 1
                 
-                # Track confusion matrix
-                true_label = claim['true_label']
-                if predicted == 'CONTRADICT' and true_label == 'CONTRADICT':
+                # Track confusion matrix (normalize case)
+                true_label = claim['true_label'].upper()
+                predicted_upper = predicted.upper()
+                
+                if predicted_upper == 'CONTRADICT' and true_label == 'CONTRADICT':
                     true_positives += 1
-                elif predicted == 'CONTRADICT' and true_label == 'CONSISTENT':
+                elif predicted_upper == 'CONTRADICT' and true_label == 'CONSISTENT':
                     false_positives += 1
-                elif predicted == 'CONSISTENT' and true_label == 'CONTRADICT':
+                elif predicted_upper == 'CONSISTENT' and true_label == 'CONTRADICT':
                     false_negatives += 1
-                elif predicted == 'CONSISTENT' and true_label == 'CONSISTENT':
+                elif predicted_upper == 'CONSISTENT' and true_label == 'CONSISTENT':
                     true_negatives += 1
                 
                 print(f"Correct: {is_correct}")

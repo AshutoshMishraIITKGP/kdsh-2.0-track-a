@@ -1,8 +1,7 @@
 from typing import List, Dict
 import os
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
+from zhipuai import ZhipuAI
 
 load_dotenv()
 
@@ -11,34 +10,27 @@ class GroundedInference:
     """LLM-based grounded constraint inference using bounded evidence."""
     
     def __init__(self):
-        api_key = os.getenv("GROQ_API_KEY")
+        api_key = os.getenv("GLM_API_KEY", "78e909a9cf7b48a2856a1b178fbd4e7d.ZKmtkKseITStcyrE")
         if not api_key:
-            raise RuntimeError("GROQ_API_KEY environment variable is required")
+            raise RuntimeError("GLM_API_KEY environment variable is required")
             
-        self.llm = ChatGroq(
-            model="llama-3.1-8b-instant",
-            temperature=0.1,
-            top_p=0.9,
-            max_tokens=100,
-            groq_api_key=api_key
-        )
+        self.client = ZhipuAI(api_key=api_key)
         
-        self.prompt = PromptTemplate(
-            template="""You are checking whether the following passages impose constraints
+        self.prompt_template = """You are checking whether the following passages impose constraints
 on the claim atom.
 
 CLAIM ATOM: {claim_text}
 PASSAGES: {evidence_chunks}
 
 Classify as:
-- HARD_VIOLATION: Atom contradicts explicit text in the passages
-- UNSUPPORTED: Atom introduces detailed new facts not in passages
+- HARD_VIOLATION: Atom directly contradicts explicit facts in the passages (e.g., "He died" vs "He lived")
+- UNSUPPORTED: Atom introduces new details not mentioned in passages
 - NO_CONSTRAINT: Passages neither forbid nor require the atom
 
+IMPORTANT: Only use HARD_VIOLATION for direct factual contradictions, not missing details.
+
 Output ONLY one label:
-HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT""",
-            input_variables=["claim_text", "evidence_chunks"]
-        )
+HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT"""
     
     def format_evidence(self, evidence_chunks: List[Dict[str, str]]) -> str:
         """Format evidence chunks for the prompt."""
@@ -61,16 +53,19 @@ HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT""",
         try:
             evidence_text = self.format_evidence(evidence_chunks)
             
-            prompt_text = self.prompt.format(
+            prompt_text = self.prompt_template.format(
                 claim_text=claim.get('claim_text', ''),
                 evidence_chunks=evidence_text
             )
             
-            response = self.llm.invoke(prompt_text)
-            response_text = response.content if hasattr(response, 'content') else str(response)
+            response = self.client.chat.completions.create(
+                model="glm-4",
+                messages=[{"role": "user", "content": prompt_text}],
+                temperature=0.1,
+                max_tokens=100
+            )
             
-            # Extract label
-            response_text = response_text.strip().upper()
+            response_text = response.choices[0].message.content.strip().upper()
             if "HARD_VIOLATION" in response_text:
                 return "HARD_VIOLATION"
             elif "UNSUPPORTED" in response_text:

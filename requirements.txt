@@ -1,6 +1,6 @@
 sentence-transformers
 faiss-cpu
 langchain
-langchain-groq
+zhipuai
 pydantic
 python-dotenv

@@ -1,8 +1,7 @@
 from typing import List, Dict
 import os
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
+from zhipuai import ZhipuAI
 
 load_dotenv()
 
@@ -11,20 +10,13 @@ class SemanticNeighborhoodEvaluator:
     """Evaluates semantic compatibility using narrative neighborhoods."""
     
     def __init__(self):
-        api_key = os.getenv("GROQ_API_KEY")
+        api_key = os.getenv("GLM_API_KEY", "78e909a9cf7b48a2856a1b178fbd4e7d.ZKmtkKseITStcyrE")
         if not api_key:
-            raise RuntimeError("GROQ_API_KEY environment variable is required")
+            raise RuntimeError("GLM_API_KEY environment variable is required")
             
-        self.llm = ChatGroq(
-            model="llama-3.1-8b-instant",
-            temperature=0.1,
-            top_p=0.9,
-            max_tokens=100,
-            groq_api_key=api_key
-        )
+        self.client = ZhipuAI(api_key=api_key)
         
-        self.prompt = PromptTemplate(
-            template="""Analyze if these passages contradict the claim about the character.
+        self.prompt_template = """Analyze if these passages contradict the claim about the character.
 
 CLAIM: {claim_text}
 
@@ -42,9 +34,7 @@ Look for:
 Only answer INCOMPATIBLE if you find clear contradictory evidence.
 If passages are neutral, unrelated, or don't address the claim, answer COMPATIBLE.
 
-Answer: COMPATIBLE or INCOMPATIBLE""",
-            input_variables=["claim_text", "semantic_passages"]
-        )
+Answer: COMPATIBLE or INCOMPATIBLE"""
     
     def format_passages(self, semantic_chunks: List[Dict[str, str]]) -> str:
         """Format semantic neighborhood passages for the prompt."""
@@ -67,16 +57,19 @@ Answer: COMPATIBLE or INCOMPATIBLE""",
         try:
             passages_text = self.format_passages(semantic_chunks)
             
-            prompt_text = self.prompt.format(
+            prompt_text = self.prompt_template.format(
                 claim_text=claim.get('claim_text', ''),
                 semantic_passages=passages_text
             )
             
-            response = self.llm.invoke(prompt_text)
-            response_text = response.content if hasattr(response, 'content') else str(response)
+            response = self.client.chat.completions.create(
+                model="glm-4",
+                messages=[{"role": "user", "content": prompt_text}],
+                temperature=0.1,
+                max_tokens=100
+            )
             
-            # Be more strict about parsing - look for explicit contradiction signals
-            response_text = response_text.strip().upper()
+            response_text = response.choices[0].message.content.strip().upper()
             
             # Look for strong incompatibility signals
             incompatible_signals = ["INCOMPATIBLE", "CONTRADICT", "OPPOSITE", "IMPOSSIBLE"]
