@@ -1,13 +1,30 @@
 # Complete End-to-End Pipeline - KDSH 2.0 Track-A
 
 ## Overview
-This document describes the complete pipeline from raw books to final narrative consistency verification results.
+This document describes the complete pipeline from raw books to final narrative consistency verification results using multi-stage decision logic with ensemble evaluation.
 
 ## Pipeline Architecture
 
 ```
-Raw Books → Chunking → Embedding → Indexing → Claim Processing → Decision → Results
+Raw Books → C-D-F-G Chunking → E5-Large-v2 Embeddings → FAISS Indexing → 
+Multi-Stage Decision (OVER_SPECIFIED → Atomic Decomposition → Grounded Inference → 
+Impact Classification → Semantic Evaluation) → Ensemble Voting → Final Results with Metrics
 ```
+
+## System Architecture Overview
+
+### LLM Stack
+- **Provider**: Mistral AI
+- **Model**: `mistral-small-2503`
+- **API Authentication**: Base API key from `.env` file
+- **Rate Limiting**: None (removed for maximum throughput)
+- **Fallback**: Rule-based inference if API fails
+
+### Caching Strategy
+- **Book Chunks**: Pre-computed in `cache/chunks/` (no API calls)
+- **FAISS Embeddings**: Pre-computed in `cache/embeddings/` (no API calls)
+- **Character Profiles**: Pre-computed in `cache/profiles/` (no API calls)
+- **API Usage**: Only for claim decomposition and atom verification
 
 ## Stage 1: Data Preparation & Caching
 
@@ -93,36 +110,101 @@ python build_cache.py
 - Return top 5 most relevant chunks with similarity scores
 
 ### 2.3 Multi-Stage Decision Process
-**File**: `src/final_decision.py` → `aggregate_final_decision()`
+**File**: `src/final_decision_ensemble.py` → `aggregate_final_decision()`
 
 #### Stage 2.3.1: OVER_SPECIFIED Detection
-**Purpose**: Catch dataset traps (invented rituals, secret societies)
-**Logic**: Check for fabricated ceremonial/organizational details
+**Purpose**: Catch dataset traps (invented rituals, secret societies, fabricated ceremonies)
+**Logic**: Check for over-detailed ceremonial/organizational claims not in source material
 **Output**: `CONTRADICT` if over-specified, continue otherwise
 
 #### Stage 2.3.2: Atomic Claim Decomposition  
 **File**: `src/claim_decomposer.py`
-**Process**: Break complex claims into 3-7 atomic facts
+**Process**: Break complex claims into 3-7 atomic facts using Mistral Small 2503
 **Example**: 
 - Original: "Edmund admired Napoleon and joined secret society"
 - Atoms: ["Edmund admired Napoleon", "Edmund joined secret society"]
 
-#### Stage 2.3.3: Grounded Inference
+**API Usage**: 1 request per claim
+
+#### Stage 2.3.3: Ensemble Grounded Inference
 **File**: `src/grounded_inference.py`
 **Input**: Individual atoms + evidence chunks
-**Output**: `HARD_VIOLATION` | `UNSUPPORTED` | `NO_CONSTRAINT`
+**Output**: Three perspectives with voting
 
-**Classification Rules**:
-- **HARD_VIOLATION**: Explicit text contradictions only
-- **UNSUPPORTED**: Introduces detailed new facts not in text  
+**Three-Perspective Evaluation**:
+
+1. **Strict Perspective**
+   - Treats NO_CONSTRAINT as UNSUPPORTED
+   - Most conservative interpretation
+   - Requires strong evidence for CONSISTENT verdict
+
+2. **Moderate Perspective**
+   - Standard evaluation rules
+   - Balanced between strict and lenient
+   - Default decision logic
+
+3. **Lenient Perspective**
+   - Treats UNSUPPORTED as NO_CONSTRAINT for non-obligations
+   - Most permissive interpretation
+   - Allows benefit of doubt for plausible claims
+
+**Classification Rules (Per Perspective)**:
+- **HARD_VIOLATION**: Text explicitly states DIFFERENT value (competing fact required)
+- **UNSUPPORTED**: Claim adds details not in text (silence, not contradiction)  
 - **NO_CONSTRAINT**: Consistent with available evidence
+- **SUPPORTED**: Text explicitly states SAME fact with SAME values
 
-#### Stage 2.3.4: Impact Classification & Routing
+**High-Stakes Filter**:
+- HARD_VIOLATION requires "competing fact" - specific quote that REJECTS the claim
+- Silence is NOT contradiction - minor unmentioned details → UNSUPPORTED
+- Examples:
+  - Claim: "Tasmania", Text: "New Zealand" → HARD_VIOLATION (competing fact)
+  - Claim: "Tasmania", Text: "Australia" → UNSUPPORTED (not explicit)
+  - Claim: "Sister named Marie", Text: silent → UNSUPPORTED (no competing fact)
+
+**Voting Logic**:
+```python
+if count(perspectives == "CONTRADICT") >= 2:
+    final_verdict = "CONTRADICT"
+else:
+    final_verdict = "CONSISTENT"
+```
+
+**API Usage**: 3 requests per atom (one per perspective)
+
+#### Stage 2.3.4: Strict Support Detection
+**Purpose**: Prevent false SUPPORTED verdicts from co-occurrence hallucination
+**Problem**: System was marking atoms SUPPORTED when evidence only showed character name + event noun together
+
+**Solution 1 - Prompt Engineering**:
+```
+You are a STRICT fact-checker. Mark SUPPORTED only if:
+• The evidence EXPLICITLY STATES the exact claim
+• Not just co-occurrence of related terms
+• Not just character name + event noun appearing together
+
+Examples:
+Claim: "Alice feared the Queen"
+Evidence: "Alice saw the Queen" → UNSUPPORTED (co-occurrence ≠ fear)
+Evidence: "Alice was terrified of the Queen" → SUPPORTED (explicit statement)
+```
+
+**Solution 2 - Validation Check**:
+```python
+if verdict == "SUPPORTED":
+    claim_words = set(claim.lower().split())
+    evidence_words = set(evidence.lower().split())
+    overlap = len(claim_words & evidence_words) / len(claim_words)
+    if overlap < 0.5:
+        verdict = "UNSUPPORTED"  # Override false positive
+```
+
+#### Stage 2.3.5: Impact Classification & Routing
 **Logic**: Determine if UNSUPPORTED atoms need semantic evaluation
 - **LOW_IMPACT**: Descriptive details (childhood, rituals) → Skip semantic
 - **CAUSAL_IMPACT**: Motivations, alliances, actions → Allow semantic
 
-#### Stage 2.3.5: Semantic Neighborhood Evaluation
+#### Stage 2.3.6: Semantic Neighborhood Evaluation
 **File**: `src/semantic_neighborhood.py`
 **Input**: Causal impact atoms + character profile
 **Output**: `COMPATIBLE` | `INCOMPATIBLE`
@@ -132,13 +214,40 @@ python build_cache.py
 - Evaluate narrative compatibility without requiring explicit evidence
 - Apply strict narrative fidelity rules (not just plausibility)
 
+**API Usage**: 1 request per causal impact atom (if needed)
+
 ### 2.4 Final Decision Aggregation
 **Decision Hierarchy**:
 1. `OVER_SPECIFIED` → `CONTRADICT`
-2. `HARD_VIOLATION` → `CONTRADICT` 
-3. `UNSUPPORTED + LOW_IMPACT` → `CONSISTENT`
-4. `UNSUPPORTED + CAUSAL_IMPACT` → Semantic evaluation result
-5. `NO_CONSTRAINT` → `CONSISTENT`
+2. Ensemble voting across 3 perspectives per atom
+3. If 2+ perspectives say `CONTRADICT` for any atom → `CONTRADICT`
+4. Otherwise → `CONSISTENT`
+
+**Ensemble Logic**:
+```python
+for atom in atoms:
+    strict_verdict = evaluate_strict(atom)
+    moderate_verdict = evaluate_moderate(atom)
+    lenient_verdict = evaluate_lenient(atom)
+    
+    contradict_votes = sum([
+        strict_verdict == "CONTRADICT",
+        moderate_verdict == "CONTRADICT",
+        lenient_verdict == "CONTRADICT"
+    ])
+    
+    if contradict_votes >= 2:
+        return "CONTRADICT"
+
+return "CONSISTENT"
+```
+
+**API Usage Summary**:
+- 1 decomposition call per claim
+- 3 evaluation calls per atom (strict, moderate, lenient)
+- Total: 1 + (3 × num_atoms) requests per claim
+- For 3-7 atoms: 10-22 API requests per claim
+- For 80 claims: ~800-1,760 total requests
 
 ## Stage 3: Evaluation & Results
 
@@ -239,12 +348,12 @@ Semantic-only decisions: 8
 ### Core Processing
 - `src/chunking.py` - C-D-F-G chunking strategy
 - `src/semantic_index.py` - E5-large-v2 embeddings + FAISS
-- `src/final_decision.py` - Multi-stage decision logic
+- `src/final_decision_ensemble.py` - Multi-stage ensemble decision logic
 
 ### Decision Components  
-- `src/claim_decomposer.py` - Atomic claim decomposition
-- `src/grounded_inference.py` - Evidence-based evaluation
-- `src/semantic_neighborhood.py` - Narrative compatibility
+- `src/claim_decomposer.py` - Atomic claim decomposition (Mistral)
+- `src/grounded_inference.py` - Evidence-based evaluation with 3 perspectives (Mistral)
+- `src/semantic_neighborhood.py` - Narrative compatibility (Mistral)
 
 ### Support Modules
 - `src/character_profiles.py` - LLM-generated character summaries
@@ -256,18 +365,30 @@ Semantic-only decisions: 8
 
 ### Caching Benefits
 - **First run**: ~10-15 minutes (embedding generation)
-- **Subsequent runs**: ~30-60 seconds (cached embeddings)
+- **Subsequent runs**: Depends only on Mistral API response time
 - **Profile generation**: ~2-3 seconds per character (cached)
+- **No Rate Limiting**: System runs at maximum API throughput
 
 ### API Usage
-- **Groq API calls**: ~2-4 per claim (decomposition + grounded inference)
-- **Rate limiting**: 2-3 second delays between calls
+- **Provider**: Mistral AI
+- **Model**: `mistral-small-2503`
+- **Requests per Claim**: 10-22 (1 decomposition + 3 perspectives × 3-7 atoms)
+- **Total for 80 Claims**: ~800-1,760 requests
+- **Response Time**: Typically 200-500ms per request
+- **No Artificial Delays**: Removed all rate limiting for speed
 - **Fallback**: Rule-based inference if API fails
 
 ### Memory Requirements
 - **Embeddings**: ~100MB per book (E5-large-v2)
 - **FAISS indices**: ~50MB per book
 - **Runtime memory**: ~2-4GB (GPU recommended for embeddings)
+
+### Performance Optimizations
+- **GPU Acceleration**: CUDA support for E5-large-v2 embeddings
+- **Persistent Caching**: Pre-computed embeddings and profiles
+- **No Rate Limiting**: Maximum API throughput
+- **Batch Processing**: Efficient embedding generation
+- **Ensemble Parallelization**: Could parallelize 3 perspectives (future optimization)
 
 ## Architecture Compliance
 
@@ -284,3 +405,33 @@ Semantic-only decisions: 8
 - E5-large-v2 embeddings for narrative-faithful retrieval
 - Transparency with dual verdicts (grounded + semantic)
 - Comprehensive caching for fast iteration
+- Ensemble voting reduces false positives/negatives
+- Strict support detection prevents co-occurrence hallucination
+- No rate limiting for maximum throughput
+
+## Key Technical Decisions
+
+### LLM Integration
+- **Provider**: Mistral AI (migrated from Groq)
+- **Model**: `mistral-small-2503`
+- **Rationale**: Better rate limits, improved reasoning, cost-effective
+- **API Key**: Stored in `.env` file
+- **Rate Limiting**: Removed for maximum speed
+
+### Ensemble Architecture
+- **Three Perspectives**: Strict, Moderate, Lenient
+- **Voting Logic**: 2+ CONTRADICT votes → final CONTRADICT
+- **Purpose**: Reduce false positives and false negatives
+- **API Cost**: 3x per atom, but improved accuracy
+
+### False Positive Prevention
+- **Prompt Engineering**: Strict fact-checker instructions
+- **Validation Check**: 50% word overlap threshold
+- **Purpose**: Prevent co-occurrence hallucination
+- **Impact**: Improved precision on SUPPORTED verdicts
+
+### Performance Optimizations
+- **Caching**: All expensive operations pre-computed
+- **GPU Acceleration**: CUDA support for embeddings
+- **No Rate Limiting**: Maximum API throughput
+- **Batch Processing**: Efficient embedding generation

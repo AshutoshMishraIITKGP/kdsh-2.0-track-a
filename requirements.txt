@@ -1,6 +1,5 @@
 sentence-transformers
 faiss-cpu
-langchain
-zhipuai
+mistralai
 pydantic
 python-dotenv

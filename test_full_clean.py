@@ -7,13 +7,14 @@ import sys
 import csv
 import json
 import random
+import time
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from semantic_index import SemanticIndex
-from final_decision import aggregate_final_decision
+from final_decision_ensemble import aggregate_final_decision
 
 
 def load_train_data():
@@ -51,7 +52,7 @@ def load_cached_chunks(book_name):
 def test_full_flow():
     """Test with grounded verification + semantic presence."""
     
-    print("=== Full Flow: Grounded + Semantic (All 80 Claims) ===\n")
+    print("=== Full Flow: Grounded + Semantic (All Claims) ===\n")
     
     # Load training data
     claims = load_train_data()
@@ -92,8 +93,8 @@ def test_full_flow():
         print(f"Claim: {claim_text[:60]}...")
         print(f"True label: {claim['true_label']}")
         
-        # Step 1: Grounded verification (retrieval)
-        evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=5)
+        # Step 1: Grounded verification (retrieval) - Increased to 10 for better coverage
+        evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=10)
         print(f"Retrieved: {len(evidence_chunks)} chunks")
         
         # Step 2: Final decision (grounded → semantic if needed)
@@ -138,6 +139,19 @@ def test_full_flow():
             else:
                 print("Not evaluable")
             
+            # Show metrics every 20 iterations
+            if total > 0 and total % 20 == 0:
+                accuracy = correct / total
+                precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
+                recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+                f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+                
+                print(f"\n=== METRICS AT {total} CLAIMS ===")
+                print(f"Accuracy: {accuracy:.2%}")
+                print(f"Precision: {precision:.2%}")
+                print(f"Recall: {recall:.2%}")
+                print(f"F1-Score: {f1_score:.2%}\n")
+            
         except Exception as e:
             print(f"Error: {e}")
         
@@ -147,7 +161,7 @@ def test_full_flow():
     if total > 0:
         accuracy = correct / total
         
-        # Calculate precision and recall
+        # Calculate standard precision and recall
         precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
         recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
         f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
@@ -155,8 +169,8 @@ def test_full_flow():
         print(f"=== RESULTS ===")
         print(f"Correct: {correct}/{total}")
         print(f"Accuracy: {accuracy:.2%}")
-        print(f"Precision (CONTRADICT): {precision:.2%}")
-        print(f"Recall (CONTRADICT): {recall:.2%}")
+        print(f"Precision: {precision:.2%}")
+        print(f"Recall: {recall:.2%}")
         print(f"F1-Score: {f1_score:.2%}")
         print(f"\nConfusion Matrix:")
         print(f"                 Predicted")
@@ -166,6 +180,8 @@ def test_full_flow():
         print(f"\nMethod Distribution:")
         print(f"Grounded decisions: {grounded_count}")
         print(f"Semantic-only decisions: {semantic_only_count}")
+        print(f"\nFalse Positive Rate: {false_positives / (false_positives + true_negatives) if (false_positives + true_negatives) > 0 else 0:.2%}")
+        print(f"False Negative Rate: {false_negatives / (false_negatives + true_positives) if (false_negatives + true_positives) > 0 else 0:.2%}")
     else:
         print("No evaluable claims")
 

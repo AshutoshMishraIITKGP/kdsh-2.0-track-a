@@ -1,7 +1,7 @@
 from typing import List, Dict
 import os
 from dotenv import load_dotenv
-from zhipuai import ZhipuAI
+from mistralai import Mistral
 
 load_dotenv()
 
@@ -10,11 +10,11 @@ class ClaimDecomposer:
     """Decomposes complex claims into atomic constraints."""
     
     def __init__(self):
-        api_key = os.getenv("GLM_API_KEY", "78e909a9cf7b48a2856a1b178fbd4e7d.ZKmtkKseITStcyrE")
+        api_key = os.getenv("MISTRAL_API_KEY")
         if not api_key:
-            raise RuntimeError("GLM_API_KEY environment variable is required")
+            raise RuntimeError("MISTRAL_API_KEY environment variable is required")
             
-        self.client = ZhipuAI(api_key=api_key)
+        self.client = Mistral(api_key=api_key)
         
         self.prompt_template = """Given a backstory claim, extract the minimal atomic facts it assumes.
 Do NOT paraphrase. Output a bullet list.
@@ -38,11 +38,9 @@ Keep facts simple and testable against text."""
         try:
             prompt_text = self.prompt_template.format(claim_text=claim_text)
             
-            response = self.client.chat.completions.create(
-                model="glm-4",
-                messages=[{"role": "user", "content": prompt_text}],
-                temperature=0.1,
-                max_tokens=200
+            response = self.client.chat.complete(
+                model="mistral-small-2503",
+                messages=[{"role": "user", "content": prompt_text}]
             )
             
             response_text = response.choices[0].message.content

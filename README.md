@@ -34,18 +34,42 @@ Impact Classification → Semantic Evaluation) → Final Results with Metrics
 pip install -r requirements.txt
 
 # Set up environment
-echo "GROQ_API_KEY=your_api_key_here" > .env
+echo "MISTRAL_API_KEY=your_api_key_here" > .env
 ```
 
 ### Build Cache (One-time setup)
 ```bash
 python build_cache.py
 ```
+This generates:
+- Book chunks in `cache/chunks/`
+- FAISS embeddings in `cache/embeddings/`
+- Character profiles in `cache/profiles/`
 
-### Run Evaluation
+### Test on Training Data
 ```bash
 python test_full_clean.py
 ```
+This will:
+- Load all 80 training claims from `data/train.csv`
+- Run ensemble evaluation with metrics
+- Display accuracy, precision, recall, F1-score
+- Show confusion matrix and method distribution
+
+### Generate Test Predictions
+```bash
+python run_test.py
+```
+This will:
+- Load test claims from `data/test.csv`
+- Generate predictions for each claim
+- Save results to `results.csv` with format:
+  ```csv
+  id,label
+  test_001,CONTRADICT
+  test_002,CONSISTENT
+  ...
+  ```
 
 ## 📁 Project Structure
 
@@ -54,17 +78,14 @@ kdsh-2.0-track-a/
 ├── src/                           # Core pipeline modules
 │   ├── chunking.py               # C-D-F-G chunking strategy
 │   ├── semantic_index.py         # E5-large-v2 + FAISS
-│   ├── final_decision.py         # Multi-stage decision logic
+│   ├── final_decision_ensemble.py # Multi-stage ensemble decision logic
 │   ├── claim_decomposer.py       # Atomic claim decomposition
-│   ├── grounded_inference.py     # Evidence-based evaluation
+│   ├── grounded_inference.py     # Evidence-based evaluation (3 perspectives)
 │   ├── semantic_neighborhood.py  # Narrative compatibility
-│   ├── character_profiles.py     # LLM-generated profiles
+│   ├── character_profiles.py     # Mistral-generated profiles
 │   ├── load_books.py            # Book preprocessing
 │   ├── text_normalization.py    # Encoding consistency
-│   ├── config.py                # Configuration
-│   ├── hybrid_retrieval.py      # Semantic + keyword search
-│   ├── index_inmemory.py        # Keyword indexing
-│   └── narrative_compatibility.py # Narrative evaluation
+│   └── config.py                # Configuration
 ├── data/                         # Training/test datasets
 │   ├── train.csv                # Training claims
 │   ├── test.csv                 # Test claims
@@ -74,9 +95,12 @@ kdsh-2.0-track-a/
 │   ├── embeddings/              # FAISS indices
 │   └── profiles/                # Character profiles
 ├── build_cache.py               # Cache generation
-├── test_full_clean.py           # Main evaluation script
+├── test_full_clean.py           # Training evaluation script
+├── run_test.py                  # Test set prediction script
 ├── requirements.txt             # Dependencies
 ├── PIPELINE.md                  # Complete pipeline guide
+├── FUNCTIONS.md                 # Function reference
+├── FINAL_IMPLEMENTATION.md      # Implementation summary
 ├── MovingFlow.md               # Development journey
 └── README.md                   # This file
 ```
@@ -119,18 +143,20 @@ kdsh-2.0-track-a/
 
 ### Environment Variables
 ```bash
-GROQ_API_KEY=your_groq_api_key_here
+MISTRAL_API_KEY=your_mistral_api_key_here
 ```
 
 ### Model Configuration
 - **Embeddings**: `intfloat/e5-large-v2`
-- **LLM**: `llama-3.1-8b-instant` via Groq API
+- **LLM**: `mistral-small-2503` via Mistral API
 - **Chunk Size**: ~850 tokens with 175 token overlap
-- **Retrieval**: Top-5 semantic + character filtering
+- **Retrieval**: Top-10 semantic search with character filtering
 
 ## 📚 Documentation
 
-- **[PIPELINE.md](PIPELINE.md)**: Complete end-to-end pipeline guide
+- **[PIPELINE.md](PIPELINE.md)**: Complete end-to-end pipeline guide with ensemble architecture
+- **[FUNCTIONS.md](FUNCTIONS.md)**: Function reference for all active components
+- **[FINAL_IMPLEMENTATION.md](FINAL_IMPLEMENTATION.md)**: Implementation summary with performance metrics
 - **[MovingFlow.md](MovingFlow.md)**: Detailed development journey and technical decisions
 - **Source Code**: Comprehensive inline documentation
 
@@ -165,5 +191,34 @@ This project is developed for the Kharagpur Data Science Hackathon 2026.
 ---
 
 **Status**: Production-Ready Advanced Solution ✅  
-**Latest**: Multi-stage evaluation with atomic decomposition and comprehensive metrics  
-**Ready**: Advanced hackathon deployment with nuanced decision logic
+**Latest**: Mistral ensemble system with multi-perspective evaluation and strict support detection  
+**Ready**: Advanced hackathon deployment with comprehensive caching and no rate limiting
+
+---
+
+## 🔧 System Optimizations
+
+### Mistral API Migration
+- Migrated from Groq Llama to Mistral Small 2503
+- Better rate limits and API stability
+- Improved reasoning quality for constraint inference
+- No rate limiting for maximum throughput
+
+### Ensemble Decision System
+- Three perspectives: Strict, Moderate, Lenient
+- Voting logic: 2+ CONTRADICT votes → final CONTRADICT
+- Reduces false positives and false negatives
+- API usage: 10-22 requests per claim
+
+### Strict Support Detection
+- Prevents co-occurrence hallucination
+- Prompt engineering: Requires explicit statement
+- Validation check: 50% word overlap threshold
+- Improved precision on SUPPORTED verdicts
+
+### Performance Characteristics
+- **First Run**: ~10-15 minutes (cache generation)
+- **Subsequent Runs**: Depends only on Mistral API speed
+- **API Requests**: 10-22 per claim (1 decomposition + 3×3-7 atoms)
+- **Total for 80 Claims**: ~800-1,760 requests
+- **No Rate Limiting**: Maximum API throughput
