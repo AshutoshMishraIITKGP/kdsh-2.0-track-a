@@ -82,7 +82,9 @@ CLAIM: {claim_text}
 TEXT: {evidence_chunks}
 
 Does the text contain a COMPETING FACT that contradicts this claim?
-Output ONLY: SUPPORTED, HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT"""
+Provide your answer in this format:
+VERDICT: [SUPPORTED/HARD_VIOLATION/UNSUPPORTED/NO_CONSTRAINT]
+REASON: [Brief explanation of why]"""
     
     def format_evidence(self, evidence_chunks: List[Dict[str, str]]) -> str:
         """Format evidence chunks for the prompt."""
@@ -95,12 +97,12 @@ Output ONLY: SUPPORTED, HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT"""
         
         return "\n\n".join(formatted)
     
-    def infer_grounded_constraint(self, claim: Dict[str, str], evidence_chunks: List[Dict[str, str]]) -> str:
+    def infer_grounded_constraint(self, claim: Dict[str, str], evidence_chunks: List[Dict[str, str]]) -> Dict[str, str]:
         """
         Perform grounded constraint inference using Mistral.
         
         Returns:
-            "SUPPORTED", "HARD_VIOLATION", "UNSUPPORTED", or "NO_CONSTRAINT"
+            Dict with 'verdict' and 'reason'
         """
         try:
             evidence_text = self.format_evidence(evidence_chunks)
@@ -115,10 +117,34 @@ Output ONLY: SUPPORTED, HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT"""
                 messages=[{"role": "user", "content": prompt_text}]
             )
             
-            response_text = response.choices[0].message.content.strip().upper()
+            response_text = response.choices[0].message.content.strip()
             
-            # Validate SUPPORTED verdicts to prevent false positives
-            if "SUPPORTED" in response_text:
+            # Parse verdict and reason
+            verdict = "UNSUPPORTED"
+            reason = "No clear evidence found"
+            
+            if "VERDICT:" in response_text:
+                lines = response_text.split('\n')
+                for line in lines:
+                    if line.startswith("VERDICT:"):
+                        verdict = line.replace("VERDICT:", "").strip().upper()
+                    elif line.startswith("REASON:"):
+                        reason = line.replace("REASON:", "").strip()
+            else:
+                # Fallback to old format
+                response_upper = response_text.upper()
+                if "HARD_VIOLATION" in response_upper:
+                    verdict = "HARD_VIOLATION"
+                elif "SUPPORTED" in response_upper:
+                    verdict = "SUPPORTED"
+                elif "UNSUPPORTED" in response_upper:
+                    verdict = "UNSUPPORTED"
+                else:
+                    verdict = "NO_CONSTRAINT"
+                reason = response_text[:200]
+            
+            # Validate SUPPORTED verdicts
+            if "SUPPORTED" in verdict:
                 claim_text_lower = claim.get('claim_text', '').lower()
                 evidence_text_lower = evidence_text.lower()
                 claim_words = set(claim_text_lower.split())
@@ -126,31 +152,25 @@ Output ONLY: SUPPORTED, HARD_VIOLATION, UNSUPPORTED, or NO_CONSTRAINT"""
                 key_words = claim_words - common_words
                 matches = sum(1 for word in key_words if word in evidence_text_lower)
                 if len(key_words) > 0 and matches / len(key_words) < 0.5:
-                    return "UNSUPPORTED"
+                    verdict = "UNSUPPORTED"
+                    reason = "Insufficient word overlap in evidence"
             
-            if "HARD_VIOLATION" in response_text:
-                return "HARD_VIOLATION"
-            elif "SUPPORTED" in response_text:
-                return "SUPPORTED"
-            elif "UNSUPPORTED" in response_text:
-                return "UNSUPPORTED"
-            else:
-                return "NO_CONSTRAINT"
+            return {"verdict": verdict, "reason": reason}
                 
         except Exception as e:
             print(f"Grounded inference error: {e}")
-            return "UNSUPPORTED"
+            return {"verdict": "UNSUPPORTED", "reason": str(e)}
 
 
-def grounded_constraint_inference(claim: Dict[str, str], evidence_chunks: List[Dict[str, str]]) -> str:
+def grounded_constraint_inference(claim: Dict[str, str], evidence_chunks: List[Dict[str, str]]) -> Dict[str, str]:
     """
     Standalone function for grounded constraint inference.
     
     Returns:
-        "SUPPORTED", "HARD_VIOLATION", "UNSUPPORTED", or "NO_CONSTRAINT"
+        Dict with 'verdict' and 'reason'
     """
     if not evidence_chunks:
-        return "UNSUPPORTED"
+        return {"verdict": "UNSUPPORTED", "reason": "No evidence chunks provided"}
     
     inference = GroundedInference()
     return inference.infer_grounded_constraint(claim, evidence_chunks)

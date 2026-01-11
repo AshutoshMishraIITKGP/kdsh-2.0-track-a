@@ -54,9 +54,15 @@ def generate_rationale(result, claim_text):
     atoms_evaluated = result.get('atoms_evaluated', 0)
     
     if decision == 'CONTRADICT':
-        if violation_atoms:
-            # Return first violation as primary reason
-            return f"Violation: {violation_atoms[0]}"
+        if violation_atoms and len(violation_atoms) > 0:
+            # Get first violation with reason
+            first_violation = violation_atoms[0]
+            if isinstance(first_violation, dict):
+                atom = first_violation.get('atom', 'Unknown')
+                reason = first_violation.get('reason', 'No reason provided')
+                return f"{atom} - {reason}"
+            else:
+                return f"Violation: {first_violation}"
         else:
             return "Narrative inconsistency detected"
     else:

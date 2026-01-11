@@ -45,10 +45,12 @@ def is_trivial_atom(atom: str) -> bool:
     return any(pattern in atom_lower for pattern in trivial_patterns)
 
 
-def evaluate_with_ensemble(atom: str, evidence_chunks: List[Dict[str, str]]) -> str:
+def evaluate_with_ensemble(atom: str, evidence_chunks: List[Dict[str, str]]) -> Dict[str, str]:
     """Evaluate atom with 3 perspectives and vote."""
     # Get verdicts from all 3 perspectives
-    moderate_verdict = grounded_constraint_inference({'claim_text': atom}, evidence_chunks)
+    moderate_result = grounded_constraint_inference({'claim_text': atom}, evidence_chunks)
+    moderate_verdict = moderate_result['verdict']
+    reason = moderate_result['reason']
     
     # Strict: treat NO_CONSTRAINT as UNSUPPORTED
     strict_verdict = moderate_verdict
@@ -68,7 +70,7 @@ def evaluate_with_ensemble(atom: str, evidence_chunks: List[Dict[str, str]]) -> 
     ])
     
     if violation_votes >= 2:
-        return "HARD_VIOLATION"
+        return {"verdict": "HARD_VIOLATION", "reason": reason}
     
     # Vote: 2+ agree on SUPPORTED → SUPPORTED
     support_votes = sum([
@@ -78,10 +80,10 @@ def evaluate_with_ensemble(atom: str, evidence_chunks: List[Dict[str, str]]) -> 
     ])
     
     if support_votes >= 2:
-        return "SUPPORTED"
+        return {"verdict": "SUPPORTED", "reason": reason}
     
     # Default to moderate verdict
-    return moderate_verdict
+    return {"verdict": moderate_verdict, "reason": reason}
 
 
 def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[str, str]], semantic_index: SemanticIndex = None) -> Dict[str, str]:
@@ -103,23 +105,28 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
         
         # Trivial atoms: single pass (MODERATE only)
         if is_trivial and not is_obligation:
-            verdict = grounded_constraint_inference({'claim_text': atom}, evidence_chunks)
+            result = grounded_constraint_inference({'claim_text': atom}, evidence_chunks)
+            verdict = result['verdict']
+            reason = result['reason']
         else:
             # Important atoms: use ensemble
-            verdict = evaluate_with_ensemble(atom, evidence_chunks)
+            result = evaluate_with_ensemble(atom, evidence_chunks)
+            verdict = result['verdict']
+            reason = result['reason']
         
         # Store atom details
         atom_details.append({
             'atom': atom,
             'verdict': verdict,
+            'reason': reason,
             'is_violation': verdict == "HARD_VIOLATION" or (is_obligation and verdict != "SUPPORTED")
         })
         
         # Check for violations
         if verdict == "HARD_VIOLATION":
-            violations.append(atom)
+            violations.append({'atom': atom, 'reason': reason})
         elif is_obligation and verdict != "SUPPORTED":
-            violations.append(atom)
+            violations.append({'atom': atom, 'reason': reason})
     
     # Decision based on violations
     if len(violations) > 0:
