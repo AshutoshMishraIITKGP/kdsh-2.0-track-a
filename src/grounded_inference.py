@@ -153,7 +153,7 @@ REASON: [Brief explanation of why]"""
                 matches = sum(1 for word in key_words if word in evidence_text_lower)
                 if len(key_words) > 0 and matches / len(key_words) < 0.5:
                     verdict = "UNSUPPORTED"
-                    reason = "Insufficient word overlap in evidence"
+                    # Keep original reason from LLM, don't override
             
             return {"verdict": verdict, "reason": reason}
                 
