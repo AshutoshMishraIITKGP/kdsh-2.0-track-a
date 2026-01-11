@@ -48,25 +48,36 @@ def load_cached_chunks(book_name):
 
 
 def generate_rationale(result, claim_text):
-    """Generate detailed rationale from decision result."""
+    """Generate detailed rationale listing all atomic claims with verdicts."""
     decision = result['final_decision'].upper()
-    violation_atoms = result.get('violation_atoms', [])
-    atoms_evaluated = result.get('atoms_evaluated', 0)
+    atom_details = result.get('atom_details', [])
     
-    if decision == 'CONTRADICT':
-        if violation_atoms and len(violation_atoms) > 0:
-            # Get first violation with reason
-            first_violation = violation_atoms[0]
-            if isinstance(first_violation, dict):
-                atom = first_violation.get('atom', 'Unknown')
-                reason = first_violation.get('reason', 'No reason provided')
-                return f"{atom} - {reason}"
-            else:
-                return f"Violation: {first_violation}"
+    if not atom_details:
+        return "No atomic claims evaluated"
+    
+    # Build list of claims with verdicts
+    claim_list = []
+    for i, detail in enumerate(atom_details, 1):
+        atom = detail.get('atom', 'Unknown')
+        verdict = detail.get('verdict', 'UNKNOWN')
+        
+        # Shorten atom text if too long
+        if len(atom) > 80:
+            atom = atom[:77] + "..."
+        
+        # Map verdict to simple status
+        if verdict == "SUPPORTED":
+            status = "supported"
+        elif verdict == "HARD_VIOLATION":
+            status = "rejected"
+        elif verdict == "UNSUPPORTED":
+            status = "unsupported"
         else:
-            return "Narrative inconsistency detected"
-    else:
-        return f"All {atoms_evaluated} atomic claims supported by narrative evidence"
+            status = "no-constraint"
+        
+        claim_list.append(f"Claim {i}: {atom} ({status})")
+    
+    return "; ".join(claim_list)
 
 
 def run_test():
