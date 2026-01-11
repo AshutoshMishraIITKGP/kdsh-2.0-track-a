@@ -32,44 +32,109 @@ Impact Classification → Semantic Evaluation) → Final Results with Metrics
 ```bash
 # Install dependencies
 pip install -r requirements.txt
-
-# Set up environment
-echo "MISTRAL_API_KEY=your_api_key_here" > .env
 ```
 
-### Build Cache (One-time setup)
+### Step 1: Setup API Key
+
+Create a `.env` file in the project root directory:
+
+```bash
+# Windows
+echo MISTRAL_API_KEY=your_mistral_api_key_here > .env
+
+# Linux/Mac
+echo "MISTRAL_API_KEY=your_mistral_api_key_here" > .env
+```
+
+Or manually create `.env` file with:
+```
+MISTRAL_API_KEY=your_actual_api_key
+```
+
+**Get Mistral API Key**: Sign up at [https://console.mistral.ai/](https://console.mistral.ai/) and generate an API key.
+
+### Step 2: Build Cache (One-time setup)
+
 ```bash
 python build_cache.py
 ```
+
 This generates:
 - Book chunks in `cache/chunks/`
 - FAISS embeddings in `cache/embeddings/`
 - Character profiles in `cache/profiles/`
 
-### Test on Training Data
+**Time**: ~10-15 minutes on first run
+
+### Step 3: Run Model on Training Data
+
 ```bash
 python test_full_clean.py
 ```
+
 This will:
 - Load all 80 training claims from `data/train.csv`
-- Run ensemble evaluation with metrics
-- Display accuracy, precision, recall, F1-score
-- Show confusion matrix and method distribution
+- Run dual-agent ensemble evaluation
+- Display real-time progress with predictions
+- Show final metrics:
+  - Accuracy, Precision, Recall, F1-Score
+  - Confusion Matrix
+  - Method Distribution
 
-### Generate Test Predictions
+**Expected Output**:
+```
+=== Dual Agent System: 10 Chunks (3-3-4 batches) ===
+
+Loaded 80 total claims
+Loading semantic index...
+...
+=== RESULTS ===
+Correct: 52/80
+Accuracy: 65.00%
+Precision: 51.85%
+Recall: 48.28%
+F1-Score: 50.00%
+```
+
+**Time**: ~7-10 minutes (depends on Mistral API speed)
+
+### Step 4: Generate Test Predictions
+
 ```bash
 python run_test.py
 ```
+
 This will:
 - Load test claims from `data/test.csv`
 - Generate predictions for each claim
 - Save results to `results.csv` with format:
   ```csv
-  id,label
-  test_001,CONTRADICT
-  test_002,CONSISTENT
+  story_id,prediction,rationale
+  test_001,0,"Found 2 violations in batch 1; Atoms: 5 (supported=1, violations=2, unsupported=2)"
+  test_002,1,"Found 3 supported atoms in batch 1; Atoms: 4 (supported=3, violations=0, unsupported=1)"
   ...
   ```
+
+**Output Format**:
+- `story_id`: Test claim identifier
+- `prediction`: 1 = CONSISTENT, 0 = INCONSISTENT
+- `rationale`: Explanation with atom statistics
+
+**Time**: ~5-8 minutes for 60 test claims
+
+### Troubleshooting
+
+**Issue**: `MISTRAL_API_KEY environment variable is required`
+- **Solution**: Ensure `.env` file exists with valid API key
+
+**Issue**: `No module named 'mistralai'`
+- **Solution**: Run `pip install -r requirements.txt`
+
+**Issue**: Cache files not found
+- **Solution**: Run `python build_cache.py` first
+
+**Issue**: CUDA out of memory
+- **Solution**: E5-large-v2 will automatically fall back to CPU
 
 ## 📁 Project Structure
 
