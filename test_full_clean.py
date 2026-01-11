@@ -50,9 +50,9 @@ def load_cached_chunks(book_name):
 
 
 def test_full_flow():
-    """Test with grounded verification + semantic presence."""
+    """Test with dual agent system (contradiction + consistency)."""
     
-    print("=== Full Flow: Grounded + Semantic (All Claims) ===\n")
+    print("=== Dual Agent System: 10 Chunks (3-3-4 batches) ===\n")
     
     # Load training data
     claims = load_train_data()
@@ -93,11 +93,11 @@ def test_full_flow():
         print(f"Claim: {claim_text[:60]}...")
         print(f"True label: {claim['true_label']}")
         
-        # Step 1: Grounded verification (retrieval) - Increased to 10 for better coverage
+        # Step 1: Retrieve 10 chunks for dual agent evaluation
         evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=10)
         print(f"Retrieved: {len(evidence_chunks)} chunks")
         
-        # Step 2: Final decision (grounded → semantic if needed)
+        # Step 2: Dual agent decision (contradiction + consistency agents)
         try:
             result = aggregate_final_decision(claim, evidence_chunks, semantic_index)
             predicted = result['final_decision']
@@ -105,16 +105,7 @@ def test_full_flow():
             
             print(f"Predicted: {predicted}")
             print(f"Method: {result.get('method', 'UNKNOWN')}")
-            print(f"Grounded: {result.get('grounded_verdict', 'N/A')}")
-            print(f"Semantic: {result.get('semantic_verdict', 'N/A')}")
-            print(f"Atoms: {result.get('atoms_evaluated', 0)}, Violations: {result.get('violations', 0)}")
-            
-            # Track method used
-            method = result.get('method', 'UNKNOWN')
-            if 'SEMANTIC' in method:
-                semantic_only_count += 1
-            else:
-                grounded_count += 1
+            print(f"Explanation: {explanation}")
             
             if predicted != 'not_evaluable':
                 is_correct = predicted.upper() == claim['true_label'].upper()
@@ -178,8 +169,8 @@ def test_full_flow():
         print(f"Actual CONTRADICT    {true_positives:2d}        {false_negatives:2d}")
         print(f"       CONSISTENT    {false_positives:2d}        {true_negatives:2d}")
         print(f"\nMethod Distribution:")
-        print(f"Grounded decisions: {grounded_count}")
-        print(f"Semantic-only decisions: {semantic_only_count}")
+        print(f"Contradict decisions: {true_positives + false_positives}")
+        print(f"Consistent decisions: {true_negatives + false_negatives}")
         print(f"\nFalse Positive Rate: {false_positives / (false_positives + true_negatives) if (false_positives + true_negatives) > 0 else 0:.2%}")
         print(f"False Negative Rate: {false_negatives / (false_negatives + true_positives) if (false_negatives + true_positives) > 0 else 0:.2%}")
     else:

@@ -2,6 +2,8 @@ from typing import List, Dict
 from claim_decomposer import decompose_claim
 from grounded_inference import grounded_constraint_inference
 from semantic_index import SemanticIndex
+from claim_classifier import classify_claim
+from bounded_retrieval import should_escalate_retrieval, perform_bounded_escalation, K_MAX
 
 
 def is_canon_obligated_atom(atom: str) -> bool:
@@ -87,7 +89,7 @@ def evaluate_with_ensemble(atom: str, evidence_chunks: List[Dict[str, str]]) -> 
 
 
 def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[str, str]], semantic_index: SemanticIndex = None) -> Dict[str, str]:
-    """Smart ensemble: Use ensemble only for important atoms."""
+    """Dual 3-agent system: one set finds contradictions, another finds consistency."""
     
     claim_text = claim.get('claim_text', '')
     
@@ -95,62 +97,127 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
     atoms = decompose_claim(claim_text)
     atoms = atoms[:7]
     
-    violations = []
-    atom_details = []
+    # Classify claim
+    claim_classification = classify_claim(claim_text, atoms)
     
-    # Evaluate each atom
-    for atom in atoms:
-        is_obligation = is_canon_obligated_atom(atom)
-        is_trivial = is_trivial_atom(atom)
+    # Progressive evaluation in batches: 3, 3, 4
+    batch_sizes = [3, 3, 4]
+    start_idx = 0
+    
+    contradict_batch = None
+    consistent_batch = None
+    contradict_result = None
+    consistent_result = None
+    
+    for batch_num in range(3):
+        batch_size = batch_sizes[batch_num]
+        end_idx = start_idx + batch_size
+        batch_chunks = evidence_chunks[start_idx:end_idx]
         
-        # Trivial atoms: single pass (MODERATE only)
-        if is_trivial and not is_obligation:
-            result = grounded_constraint_inference({'claim_text': atom}, evidence_chunks)
-            verdict = result['verdict']
-            reason = result['reason']
+        if len(batch_chunks) == 0:
+            break
+        
+        violations = []
+        supports = []
+        atom_details = []
+        
+        # Evaluate each atom with current batch
+        for atom in atoms:
+            is_obligation = is_canon_obligated_atom(atom)
+            is_trivial = is_trivial_atom(atom)
+            
+            if is_trivial and not is_obligation:
+                result = grounded_constraint_inference({'claim_text': atom}, batch_chunks)
+                verdict = result['verdict']
+                reason = result['reason']
+            else:
+                result = evaluate_with_ensemble(atom, batch_chunks)
+                verdict = result['verdict']
+                reason = result['reason']
+            
+            atom_details.append({
+                'atom': atom,
+                'verdict': verdict,
+                'reason': reason,
+                'is_violation': verdict == "HARD_VIOLATION" or (is_obligation and verdict != "SUPPORTED"),
+                'is_support': verdict == "SUPPORTED"
+            })
+            
+            if verdict == "HARD_VIOLATION":
+                violations.append({'atom': atom, 'reason': reason})
+            elif is_obligation and verdict != "SUPPORTED":
+                violations.append({'atom': atom, 'reason': reason})
+            
+            if verdict == "SUPPORTED":
+                supports.append({'atom': atom, 'reason': reason})
+        
+        # Track first batch with contradictions
+        if len(violations) > 0 and contradict_batch is None:
+            contradict_batch = batch_num + 1
+            contradict_result = {
+                "final_decision": "contradict",
+                "explanation": f"Found {len(violations)} violations in batch {batch_num + 1}",
+                "grounded_verdict": "CONTRADICT",
+                "semantic_verdict": None,
+                "method": "ENSEMBLE_CONTRADICT",
+                "atoms_evaluated": len(atoms),
+                "violations": len(violations),
+                "atom_details": atom_details,
+                "violation_atoms": violations,
+                "expected_evidence": claim_classification['expected_evidence'],
+                "batch_evaluated": batch_num + 1,
+                "chunks_examined": end_idx
+            }
+        
+        # Track first batch with consistency
+        if len(supports) > 0 and consistent_batch is None:
+            consistent_batch = batch_num + 1
+            consistent_result = {
+                "final_decision": "consistent",
+                "explanation": f"Found {len(supports)} supported atoms in batch {batch_num + 1}",
+                "grounded_verdict": "CONSISTENT",
+                "semantic_verdict": None,
+                "method": "ENSEMBLE_CONSISTENT",
+                "atoms_evaluated": len(atoms),
+                "violations": 0,
+                "atom_details": atom_details,
+                "violation_atoms": [],
+                "support_atoms": supports,
+                "expected_evidence": claim_classification['expected_evidence'],
+                "batch_evaluated": batch_num + 1,
+                "chunks_examined": end_idx
+            }
+        
+        start_idx = end_idx
+    
+    # Decision logic: prioritize based on batch order
+    if contradict_batch is not None and consistent_batch is not None:
+        # Both found evidence
+        if contradict_batch < consistent_batch:
+            # Contradiction found earlier → prioritize contradiction
+            return contradict_result
         else:
-            # Important atoms: use ensemble
-            result = evaluate_with_ensemble(atom, evidence_chunks)
-            verdict = result['verdict']
-            reason = result['reason']
-        
-        # Store atom details
-        atom_details.append({
-            'atom': atom,
-            'verdict': verdict,
-            'reason': reason,
-            'is_violation': verdict == "HARD_VIOLATION" or (is_obligation and verdict != "SUPPORTED")
-        })
-        
-        # Check for violations
-        if verdict == "HARD_VIOLATION":
-            violations.append({'atom': atom, 'reason': reason})
-        elif is_obligation and verdict != "SUPPORTED":
-            violations.append({'atom': atom, 'reason': reason})
-    
-    # Decision based on violations
-    if len(violations) > 0:
+            # Same batch or consistency found earlier → prioritize consistency (skewed data)
+            return consistent_result
+    elif contradict_batch is not None:
+        # Only contradiction found
+        return contradict_result
+    elif consistent_batch is not None:
+        # Only consistency found
+        return consistent_result
+    else:
+        # No evidence found
         return {
-            "final_decision": "contradict",
-            "explanation": f"Found {len(violations)} violations",
-            "grounded_verdict": "CONTRADICT",
+            "final_decision": "consistent",
+            "explanation": "No violations or support found in 10 chunks",
+            "grounded_verdict": "CONSISTENT",
             "semantic_verdict": None,
-            "method": "ENSEMBLE",
+            "method": "ENSEMBLE_DEFAULT",
             "atoms_evaluated": len(atoms),
-            "violations": len(violations),
-            "atom_details": atom_details,
-            "violation_atoms": violations
+            "violations": 0,
+            "atom_details": [],
+            "violation_atoms": [],
+            "expected_evidence": claim_classification['expected_evidence'],
+            "batch_evaluated": 3,
+            "chunks_examined": 10
         }
-    
-    # Default to consistent
-    return {
-        "final_decision": "consistent",
-        "explanation": "No violations found",
-        "grounded_verdict": "CONSISTENT",
-        "semantic_verdict": None,
-        "method": "ENSEMBLE",
-        "atoms_evaluated": len(atoms),
-        "violations": 0,
-        "atom_details": atom_details,
-        "violation_atoms": []
-    }

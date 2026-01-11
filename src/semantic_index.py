@@ -128,7 +128,7 @@ class SemanticIndex:
         
         return results
     
-    def semantic_retrieve(self, claim: Dict[str, str], max_chunks: int = 3) -> List[Dict[str, str]]:
+    def semantic_retrieve(self, claim: Dict[str, str], max_chunks: int = 30) -> List[Dict[str, str]]:
         """Retrieve evidence chunks for grounded verification with character filtering."""
         claim_text = claim.get('claim_text', '')
         book_name = claim.get('book_name', '')

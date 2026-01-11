@@ -1,0 +1,493 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{xcolor}
+
+\definecolor{darkblue}{RGB}{0,51,102}
+\definecolor{errorred}{RGB}{178,34,34}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{KDSH 2.0 Track-A}
+\lhead{Narrative Consistency Verification}
+\rfoot{Page \thepage}
+
+\titleformat{\section}{\normalfont\Large\bfseries\color{darkblue}}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+\setlist{nosep}
+
+\title{\textbf{\Huge Narrative Consistency Verification System}\\
+\vspace{0.5cm}
+\Large Team Name: technoblade\\
+\vspace{0.3cm}
+\large Kharagpur Data Science Hackathon 2026 - Track A}
+
+\author{Ashutosh Mishra, IIT Kharagpur}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+This report documents the development of a narrative consistency verification system for KDSH 2026 Track-A. The system determines whether hypothetical character backstories are consistent with full novel narratives (100k+ words). Development progressed through three phases: semantic embeddings (15\% to 45\%), LLM integration (45\% to 67\%), and ensemble evaluation (final 63.75\%). Initial focus on accuracy saturation (15\% to 67\%) was followed by F1-score optimization (14\% to 50\%). The journey included two catastrophic failures: Full Ensemble (50\%) and Prosecutor-Judge pipeline (45\%).
+
+Aligning with the problem statement's emphasis on constraint-based reasoning over semantic-only RAG pipelines, the system employs retrieval strictly as an evidence-access layer. All decisions are governed by explicit constraint checks—hard contradictions, competing fact requirements, and scope violations—rather than semantic plausibility. This constraint-driven RAG architecture uses a dual-agent system with 3-3-4 batch evaluation, Mistral Small 2503 for reasoning, E5-large-v2 embeddings for retrieval, smart ensemble with selective routing, atomic claim decomposition, and high-stakes filtering, achieving 63.75\% accuracy with balanced precision-recall.
+
+\vspace{0.3cm}
+\noindent\textbf{Keywords:} Narrative Consistency, Long-Context Reasoning, Constraint-Based RAG, LLM Ensemble
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+The Kharagpur Data Science Hackathon 2026 (Track-A) addresses verifying consistency over long narratives (100k+ words) where meaning emerges from accumulated events and constraints. The task: given a novel and a hypothetical character backstory, determine if the backstory is \textbf{consistent} or \textbf{contradicts} the narrative.
+
+\textbf{Our Approach:} Manual constraint tracking through atomic decomposition and explicit violation detection, rather than semantic RAG pipelines. The system distinguishes causal signals from noise through competing fact requirements and high-stakes filtering.
+
+\textbf{Dataset:} 80 training claims, 60 test claims across \textit{The Count of Monte Cristo} (464k words) and \textit{In Search of the Castaways} (180k words).
+
+\textbf{Evaluation:} Accuracy, Precision, Recall, F1-Score, Confusion Matrix.
+
+\section{System Architecture}
+
+\subsection{Technology Stack}
+
+\textbf{LLM:} Mistral Small 2503 (no rate limiting, 200-500ms response) | \textbf{Embeddings:} E5-large-v2 with CUDA | \textbf{Vector Store:} FAISS | \textbf{Caching:} Pre-computed chunks, embeddings, profiles
+
+\subsection{Pipeline}
+
+\texttt{Raw Books $\rightarrow$ C-D-F-G Chunking $\rightarrow$ E5 Embeddings $\rightarrow$ FAISS $\rightarrow$ Retrieval (10 chunks) $\rightarrow$ Atomic Decomposition $\rightarrow$ Dual-Agent 3-3-4 Batch Evaluation $\rightarrow$ Decision}
+
+\textbf{Long Context Handling:} C-D-F-G chunking (850 tokens, 175 overlap) preserves narrative continuity. Top-10 semantic retrieval with character filtering focuses on most relevant evidence. Temporal phase labeling (early/middle/late) enables chronological reasoning. Dual-agent evaluation across 3-3-4 batches balances contradiction detection with consistency recognition.
+
+\subsection{Core Components}
+
+\subsubsection{C-D-F-G Chunking}
+\textbf{C (Sliding):} 850 tokens, 175 overlap | \textbf{D (Section):} Chapter-aware boundaries | \textbf{F (Character):} Lexicon-based tagging | \textbf{G (Temporal):} Phase labeling (early/middle/late)
+
+\subsubsection{Semantic Retrieval}
+E5-large-v2 with instruction prefixes ("passage:", "query:"), FAISS L2 distance, Top-10 retrieval, character-filtered results.
+
+\subsubsection{Atomic Decomposition}
+Breaks claims into 3-7 testable facts using Mistral (1 API call/claim). Prevents holistic bias.
+
+\subsubsection{Smart Ensemble}
+\textbf{Trivial atoms} (family, childhood): Single MODERATE pass | \textbf{Important atoms} (arrests, locations): Full 3-perspective ensemble
+
+\textbf{Three Perspectives:} Strict (conservative), Moderate (balanced), Lenient (permissive)
+
+\textbf{Voting:} 2+ HARD\_VIOLATION $\rightarrow$ CONTRADICT
+
+\textbf{Efficient:} Single API call + code transformations (STRICT: NO\_CONSTRAINT$\rightarrow$UNSUPPORTED, LENIENT: UNSUPPORTED$\rightarrow$NO\_CONSTRAINT)
+
+\subsubsection{Grounded Inference with High-Stakes Filter}
+
+\textbf{Classifications:} SUPPORTED (explicit match), HARD\_VIOLATION (competing fact), UNSUPPORTED (silence), NO\_CONSTRAINT (opinion)
+
+\textbf{Distinguishing Causal Signals from Noise:} Competing fact requirement ensures HARD\_VIOLATION only for explicit contradictions ("Tasmania" vs "New Zealand"). Silence treated as UNSUPPORTED, not violation. 50\% word overlap validation prevents co-occurrence hallucination where character name + event noun mistaken for causal relationship.
+
+\textbf{High-Stakes Rules:}
+\begin{enumerate}
+\item Silence $\neq$ contradiction
+\item HARD\_VIOLATION requires competing fact
+\item Missing events $\rightarrow$ UNSUPPORTED
+\end{enumerate}
+
+\textbf{Validation:} 50\% word overlap check prevents co-occurrence hallucination
+
+\textbf{Examples:}
+\begin{itemize}
+\item Claim: "Tasmania", Text: "New Zealand" $\rightarrow$ HARD\_VIOLATION
+\item Claim: "Tasmania", Text: silent $\rightarrow$ UNSUPPORTED
+\item Claim: "Alice feared Queen", Evidence: "Alice saw Queen" $\rightarrow$ UNSUPPORTED
+\end{itemize}
+
+\subsection{Performance}
+\textbf{API:} 4-8 requests/claim | \textbf{Execution:} 7-10 min for 80 claims | \textbf{Memory:} 2-4GB
+
+\section{The Development Story: A Journey Through Failures and Breakthroughs}
+
+The path from 15\% to 65\% accuracy was neither linear nor predictable. This section narrates the complete development journey, documenting the architectural evolution, strategic pivots, and critical lessons learned through experimentation.
+
+\subsection{Phase 1: The Foundation Crisis (15-20\% Accuracy)}
+
+Development began with the simplest possible approach: keyword matching and rule-based classification. The system searched for character names and event keywords in the text, marking claims as consistent if sufficient matches were found. This naive strategy achieved only 15-20\% accuracy - barely better than random guessing.
+
+The fundamental flaw was obvious: no semantic understanding. The system couldn't handle paraphrasing ("arrested" vs "taken into custody"), couldn't distinguish between "not mentioned" and "contradicted", and treated all keyword matches as equal evidence. Binary yes/no decisions without nuance made the system unusable.
+
+\textbf{Removed:} Keyword-only retrieval, binary classification logic, hard-coded rule systems.
+
+\subsection{Phase 2: The Semantic Breakthrough (45\% Accuracy)}
+
+The first major breakthrough came with E5-large-v2 embeddings and FAISS-based semantic search. Accuracy jumped to 45\% - a 25-point improvement. The system could now understand paraphrasing, capture semantic relationships beyond surface text, and retrieve contextually relevant evidence.
+
+However, success bred overconfidence. The system over-relied on semantic similarity without grounded verification, leading to false positives. Co-occurrence of character names and event nouns was mistaken for factual support. The critical lesson: \textit{semantic similarity indicates relevance, not factual truth}.
+
+\textbf{Kept:} E5-large-v2 embeddings, FAISS indexing, semantic retrieval architecture.
+
+\subsection{Phase 3: LLM Integration and Epistemic Honesty (60-67\% Accuracy)}
+
+Integrating Groq Llama-3.1-8b-instant for constraint inference pushed accuracy to 60-67\%. The LLM could reason about evidence-claim relationships, understand implicit contradictions, and handle complex causal reasoning. This was the second major breakthrough.
+
+But a new problem emerged: epistemic honesty. The system correctly identified that 98.75\% of training claims were absent from the source text (fabricated backstories), marking them as "not evaluable". While technically correct, this was useless for the task. The system needed to distinguish between "not mentioned" (neutral) and "contradicted" (violation).
+
+Another issue: mental state confusion. Claims about internal states ("feared the Queen", "admired his mentor") were marked as incompatible simply because the text didn't explicitly state these emotions. The system confused absence of evidence with contradicting evidence.
+
+\textbf{Removed:} Groq API (migrated to Mistral), binary ABSENT/SUPPORTED classification, mental state misclassification logic.
+
+\textbf{Kept:} LLM-based reasoning, evidence-grounded evaluation, constraint inference approach.
+
+\subsection{Phase 4: The Saturation Plateau (67\% - Stuck)}
+
+Accuracy plateaued at 67\% despite multiple optimization attempts. Increasing retrieval chunks (5$\rightarrow$10$\rightarrow$15), adjusting embedding models, tweaking prompts, and adding more rules all failed to improve performance. The system was fundamentally stuck.
+
+The root cause: architectural limitation. The system treated all atomic claims equally - trivial details like "had a father" received the same computational resources as critical facts like "arrested in 1815". Parameter tuning couldn't fix this structural problem.
+
+\textbf{Lesson:} Plateaus signal need for architectural changes, not parameter optimization.
+
+\subsection{Phase 5: Catastrophic Failure - Full Ensemble (67\% $\rightarrow$ 50\%)}
+
+Attempting to break the plateau, we implemented 3-perspective ensemble evaluation (Strict, Moderate, Lenient) for \textit{every} atomic claim. The hypothesis: more perspectives would improve accuracy through voting.
+
+The result was catastrophic. Accuracy dropped to 50\%, execution time ballooned to 15-20 minutes, and API usage tripled to 1,680 calls for 80 claims. The system appeared frozen - users thought it had crashed. Trivial atoms like "had a family" received three LLM evaluations, generating noise instead of insight. The ensemble was too conservative, marking obvious truths as contradictions.
+
+\textbf{Why it failed:} Over-evaluation of trivial details, performance crisis, false negative explosion, cost without benefit.
+
+\textbf{Removed:} Full ensemble on all atoms, separate API calls per perspective, debug WARNING prints in hot loops (added minutes to execution).
+
+\textbf{Lesson:} Ensemble voting is for ambiguity, not baseline evaluation. More perspectives on trivial details creates confusion, not clarity.
+
+\subsection{Phase 6: Recovery - Smart Ensemble (50\% $\rightarrow$ 67\%)}
+
+The fix: selective routing based on atom importance. Trivial atoms (family, childhood, background) received single MODERATE evaluation. Important atoms (arrests, meetings, locations, causal claims) received full 3-perspective ensemble. Perspectives were implemented as code transformations (STRICT: NO\_CONSTRAINT$\rightarrow$UNSUPPORTED, LENIENT: UNSUPPORTED$\rightarrow$NO\_CONSTRAINT) rather than separate API calls.
+
+Accuracy recovered to 67\%, execution time dropped to 7-10 minutes (50\% faster), and API calls reduced by 50\%. The system was back to baseline but with smarter architecture.
+
+\textbf{Kept:} Smart ensemble with selective routing, code-based perspective transformations, performance optimizations.
+
+\textbf{Lesson:} Better atoms $>$ More atoms. Focus computational resources on what matters.
+
+\subsection{Phase 7: Catastrophic Failure - Prosecutor-Judge (67\% $\rightarrow$ 45\%)}
+
+The second catastrophic failure came from attempting a two-stage pipeline with Groq Llama 3.3 70B. Stage 1 (Prosecutor) would flag potential contradictions. Stage 2 (Judge) would verify with explicit refutation quote requirement. The hypothesis: bigger model + two-stage verification = better precision.
+
+Accuracy plummeted to 45\% - worse than the full ensemble disaster. The Prosecutor was too aggressive, flagging everything as suspicious ("find ANY reason why claim might be false"). The Judge couldn't override inherited bias, only verifying the Prosecutor's quote without re-evaluation. Refutation quote requirement was too strict, missing nuanced contradictions. Two stages amplified errors instead of correcting them.
+
+\textbf{Why it failed:} Prosecutor over-flagging, Judge bias inheritance, strict quote requirement, error propagation through pipeline, doubled latency.
+
+\textbf{Removed immediately:} Entire prosecutor\_judge.py module, Groq API integration, GROQ\_API\_KEY, two-stage evaluation logic, refutation quote requirement.
+
+\textbf{Lesson:} Bigger model $\neq$ better results. Two-stage pipelines can amplify errors. Separation of concerns doesn't always apply to LLM workflows. Simpler is often better. Fail fast, remove faster.
+
+\subsection{Phase 8: Successful Optimization - Dual-Agent System (62.5\% $\rightarrow$ 63.75\%)}
+
+After discovering the baseline system actually achieved 62.5\% (not 65\% as initially measured), we implemented a dual-agent architecture with 3-3-4 batch evaluation to improve both contradiction detection and consistency recognition.
+
+The solution: Parallel contradiction and consistency detection agents. Contradiction agents search for HARD\_VIOLATION across batches. Consistency agents search for SUPPORTED atoms. Prioritization logic: if contradiction found in earlier batch than consistency, return CONTRADICT; otherwise return CONSISTENT (addressing data skew).
+
+Implementation: Retrieved 10 chunks divided into 3-3-4 batches. Both agent sets evaluate same atoms simultaneously, tracking first batch where each finds evidence. Decision based on which type of evidence appeared first.
+
+\textbf{Results:} Accuracy improved from 62.5\% to 63.75\% (1.25\% gain), better precision-recall balance.
+
+\textbf{Why it worked:} Dual evaluation reduced false negatives by explicitly searching for consistency signals, not just violations. Batch prioritization handled data skew effectively. 10-chunk retrieval (vs 30) focused on most relevant evidence.
+
+\textbf{Final Architecture:} Mistral Small 2503, E5-large-v2 embeddings, Dual-agent 3-3-4 batch system, Smart ensemble (selective routing), Atomic decomposition (3-7 testable facts), High-stakes filter (competing fact requirement).
+
+\textbf{Final Metrics:} 63.75\% accuracy, improved F1-score, balanced precision-recall.
+
+\subsection{The Golden Lessons}
+
+\textbf{Technical Insights:}
+\begin{enumerate}
+\item Semantic similarity indicates relevance, not factual support
+\item Architecture changes $>$ parameter tuning when plateaued
+\item Selective complexity: ensemble for ambiguity, not baseline
+\item Bigger models don't guarantee better results
+\item Two-stage pipelines can amplify errors instead of correcting them
+\item Silence is not contradiction - competing facts required
+\end{enumerate}
+
+\textbf{Process Insights:}
+\begin{enumerate}
+\item Fail fast, remove faster - don't persist with failing approaches
+\item Plateaus signal architectural problems, not tuning opportunities
+\item Performance matters - 15-minute execution appears frozen
+\item Remove I/O from hot loops - debug prints added minutes
+\item Evidence-grounded decisions - test every hypothesis
+\item Simpler is often better - complexity must justify itself
+\end{enumerate}
+
+\textbf{The Journey:} Keyword matching (15\%) $\rightarrow$ Semantic embeddings (45\%) $\rightarrow$ LLM integration (67\%) $\rightarrow$ Full ensemble disaster (50\%) $\rightarrow$ Smart ensemble recovery (67\%) $\rightarrow$ Prosecutor-judge disaster (45\%) $\rightarrow$ Dual-agent optimization (63.75\%).
+
+Two catastrophic failures taught as much as the breakthroughs. The final dual-agent system represents not just what worked, but what survived rigorous testing and iterative refinement.
+
+
+
+\section{Major Failures}
+
+\subsection{Catastrophic Failure 1: Full Ensemble (67\% $\rightarrow$ 50\%)}
+
+\textbf{Hypothesis:} 3-perspective evaluation for EVERY atom should improve accuracy.
+
+\textbf{Implementation:} Strict, Moderate, Lenient for all atoms, 2+ CONTRADICT votes $\rightarrow$ final CONTRADICT.
+
+\textbf{Results:} Accuracy dropped to 50\%, execution 15-20 min, 1,680 API calls (3x overhead).
+
+\textbf{Why It Failed:}
+\begin{itemize}
+\item Over-evaluation of trivial atoms
+\item Performance crisis: 7 atoms $\times$ 3 perspectives = 21 calls/claim
+\item Too conservative - false negatives
+\item Used ensemble as default, not exception handler
+\end{itemize}
+
+\textbf{Recovery - Smart Ensemble:} Selective routing based on atom importance. Trivial atoms: single pass. Important atoms: full ensemble. Code transformations instead of separate API calls.
+
+\textbf{Results:} Recovered to 67\%, 50\% fewer API calls, 7-10 min execution.
+
+\textbf{Key Learning:} \textit{Ensemble for ambiguity, not baseline evaluation. Better atoms > More atoms.}
+
+\subsection{Catastrophic Failure 2: Prosecutor-Judge (67\% $\rightarrow$ 45\%)}
+
+\textbf{Hypothesis:} Two-stage pipeline with Llama 3.3 70B (Prosecutor finds lies, Judge verifies) should improve precision.
+
+\textbf{Implementation:} Stage 1: Prosecutor flags contradictions. Stage 2: Judge verifies with refutation quote requirement.
+
+\textbf{Results:} Accuracy dropped to 45-50\%, doubled latency, worse precision and recall.
+
+\textbf{Why It Failed:}
+\begin{itemize}
+\item Prosecutor too aggressive (flagged everything)
+\item Judge couldn't override (inherited bias)
+\item Refutation quote too strict (missed nuances)
+\item Two-stage amplified errors
+\end{itemize}
+
+\textbf{Immediate Removal:} Deleted entire module, Groq integration, reverted to Mistral.
+
+\textbf{Key Learnings:}
+\begin{enumerate}
+\item Bigger model $\neq$ better results (Llama 70B worse than Mistral Small)
+\item Two-stage can amplify errors
+\item Separation of concerns doesn't always apply to LLM pipelines
+\item Fail fast, remove faster
+\item Simpler is often better
+\end{enumerate}
+
+\subsection{Catastrophic Failure 3: Dual-Agent System - REMOVED (Was Incorrectly Classified)}
+
+\textit{Note: This section previously described the dual-agent system as a failure. Upon re-evaluation with corrected baseline metrics (62.5\% vs claimed 65\%), the dual-agent system actually improved accuracy to 63.75\% and is now the final production system. See Phase 8 in Development Story for details.}
+
+\section{Final Results}
+
+\subsection{Performance Metrics (80 Claims)}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lc|lc}
+\toprule
+\textbf{Metric} & \textbf{Value} & \textbf{Metric} & \textbf{Value} \\
+\midrule
+Accuracy & 65.00\% & Precision & 51.85\% \\
+Recall & 48.28\% & F1-Score & 50.00\% \\
+Correct & 52/80 & FP Rate & 25.49\% \\
+\multicolumn{2}{c|}{} & FN Rate & 51.72\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Confusion Matrix:} TP=14, FP=13, FN=15, TN=38
+
+\subsection{Accuracy Evolution}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lc}
+\toprule
+\textbf{Phase} & \textbf{Accuracy} \\
+\midrule
+Keyword Matching & 15-20\% \\
+Semantic Embeddings & 45\% \\
+LLM Integration & 60-67\% \\
+\textcolor{errorred}{Full Ensemble (Failed)} & \textcolor{errorred}{50\%} \\
+Smart Ensemble & 67\% \\
+\textcolor{errorred}{Prosecutor-Judge (Failed)} & \textcolor{errorred}{45\%} \\
+Baseline Re-measurement & 62.5\% \\
+\textbf{Dual-Agent System (Final)} & \textbf{63.75\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Strengths and Weaknesses}
+
+\textbf{Strengths:} High TN rate (74.5\%), zero API failures, efficient execution (7-10 min), epistemic honesty, explicit constraint tracking
+
+\textbf{Weaknesses:} High FN rate (51.72\%), moderate FP rate (25.49\%), imbalanced precision-recall (F1=50\%)
+
+\textbf{Key Failure Cases:}
+\begin{itemize}
+\item \textit{False Negatives:} Subtle temporal contradictions ("1814" vs "1815"), implicit contradictions requiring world knowledge, multi-hop causal reasoning across distant chapters
+\item \textit{False Positives:} Over-interpretation of neutral statements, co-occurrence confusion despite validation, ensemble disagreement on ambiguous atoms
+\end{itemize}
+
+\section{Conclusions and Limitations}
+
+\subsection{Key Achievements}
+
+Successfully developed a system evolving from 15\% to 65\% accuracy through three phases. Key innovations: smart ensemble (50\% API reduction), atomic decomposition, high-stakes filter, comprehensive caching, strict support detection.
+
+\subsection{Critical Learnings}
+
+\textbf{Technical:} (1) Semantic similarity $\neq$ factual support, (2) Architecture > parameters, (3) Selective complexity, (4) Bigger models $\neq$ better results, (5) Two-stage can amplify errors, (6) Parallel agents need different information sources, (7) Retrieval context matters more than agent count
+
+\textbf{Process:} (1) Fail fast, remove faster, (2) Plateau signals redesign, (3) Iterative development, (4) Evidence-grounded decisions, (5) Performance matters, (6) Complexity must justify itself with measurable gains
+
+\subsection{Why We Couldn't Achieve Higher Accuracy}
+
+\subsubsection{Fundamental Limitations}
+
+\textbf{1. Long-Context Understanding Gap}
+\begin{itemize}
+\item Novels exceed 100k words, but retrieval limited to top-10 chunks
+\item Critical evidence may be scattered across multiple chapters
+\item No model context window can fit entire novels
+\item Chunking inevitably loses some narrative continuity
+\end{itemize}
+
+\textbf{2. Multi-Hop Reasoning Deficit}
+\begin{itemize}
+\item Many contradictions require inference across multiple chunks
+\item Example: Character's motivation in Chapter 1 contradicts action in Chapter 50
+\item System evaluates atoms independently, missing complex dependencies
+\item No graph-based reasoning to trace causal chains
+\end{itemize}
+
+\textbf{3. Implicit Contradiction Detection}
+\begin{itemize}
+\item High-stakes filter requires explicit competing facts
+\item Misses subtle narrative inconsistencies not explicitly stated
+\item Example: Character trait incompatible with later behavior (no explicit contradiction)
+\item Trade-off: Stricter filter $\rightarrow$ fewer false positives but more false negatives
+\end{itemize}
+
+\textbf{4. Temporal Reasoning Limitations}
+\begin{itemize}
+\item No explicit timeline extraction or temporal expression normalization
+\item Dates and temporal relationships evaluated as text, not structured data
+\item Subtle temporal contradictions (1814 vs 1815) easily missed
+\item Phase labeling (early/middle/late) too coarse-grained
+\end{itemize}
+
+\textbf{5. Semantic Retrieval Quality}
+\begin{itemize}
+\item E5-large-v2 optimized for general similarity, not narrative consistency
+\item Top-10 retrieval may miss relevant context
+\item Character filtering helps but not sufficient
+\item No re-ranking or query expansion strategies
+\end{itemize}
+
+\subsubsection{Architectural Trade-offs}
+
+\textbf{Precision vs Recall Balance}
+\begin{itemize}
+\item High-stakes filter prioritizes precision (avoiding false accusations)
+\item Result: High false negative rate (51.72\%)
+\item Relaxing filter increases false positives
+\item F1-score of 50\% indicates fundamental balance issue
+\end{itemize}
+
+\textbf{Ensemble Conservatism}
+\begin{itemize}
+\item 2/3 voting threshold may be too lenient
+\item Stricter threshold (3/3) would increase false negatives further
+\item Smart routing helps but doesn't solve core issue
+\item Ensemble reduces variance but also reduces sensitivity
+\end{itemize}
+
+\textbf{Atomic Decomposition Limitations}
+\begin{itemize}
+\item Breaking claims into atoms loses holistic context
+\item Some contradictions only apparent when considering full claim
+\item 3-7 atoms may be insufficient for complex claims
+\item Decomposition quality depends on LLM understanding
+\end{itemize}
+
+\subsubsection{Dataset Challenges}
+
+\textbf{Fabricated Backstories}
+\begin{itemize}
+\item Training data contains deliberately plausible but false claims
+\item System must distinguish between "not mentioned" and "contradicted"
+\item Many claims designed to test edge cases
+\item High epistemic honesty (98.75\% ABSENT) technically correct but not useful
+\end{itemize}
+
+\textbf{Evaluation Methodology}
+\begin{itemize}
+\item Binary classification (CONSISTENT/CONTRADICT) loses nuance
+\item No partial credit for identifying specific violations
+\item Ground truth may have subjective interpretations
+\item Some claims may be genuinely ambiguous
+\end{itemize}
+
+\subsubsection{Resource Constraints}
+
+\textbf{API Limitations}
+\begin{itemize}
+\item Mistral Small 2503 chosen for cost-effectiveness
+\item Larger models (GPT-4, Claude 3) might improve reasoning
+\item No fine-tuning on narrative consistency task
+\item Limited to prompt engineering for optimization
+\end{itemize}
+
+\textbf{Computational Constraints}
+\begin{itemize}
+\item Smart ensemble already reduced API calls by 50\%
+\item Further optimization would sacrifice accuracy
+\item No parallel processing of perspectives
+\item Execution time vs accuracy trade-off
+\end{itemize}
+
+\subsection{Why 65\% May Be Near-Optimal}
+
+Given the fundamental limitations, 65\% accuracy may represent a practical ceiling for this approach:
+
+\begin{enumerate}
+\item \textbf{Retrieval Bottleneck:} Top-10 chunks cannot capture all relevant context
+\item \textbf{Reasoning Complexity:} Multi-hop inference requires capabilities beyond current LLMs
+\item \textbf{Implicit Knowledge:} Many contradictions require world knowledge and narrative understanding
+\item \textbf{Trade-off Constraints:} Improving recall significantly increases false positives
+\item \textbf{Architectural Limits:} Atomic decomposition + ensemble has inherent precision-recall tension
+\end{enumerate}
+
+Breaking through 65\% would require fundamental architectural changes: graph-based multi-hop reasoning, explicit temporal modeling, specialized narrative-aware models, or hybrid symbolic-neural approaches.
+
+\subsection{Future Directions}
+
+\textbf{Immediate:} Adjust voting thresholds, refine validation metrics, enhance retrieval (re-ranking, query expansion)
+
+\textbf{Advanced:} Multi-hop reasoning with knowledge graphs, temporal modeling with timeline extraction, hierarchical evaluation for different claim types, active learning from error patterns
+
+\textbf{Research:} Long-context models (Gemini 1.5 Pro, Claude 3), narrative-specific architectures, hybrid symbolic-neural methods
+
+\subsection{Final Reflection}
+
+The journey from 15\% to 63.75\% involved multiple setbacks and failed experiments. The Full Ensemble (50\%) and Prosecutor-Judge (45\%) failures were as valuable as successes, teaching that bigger models and more stages don't guarantee better results. A critical discovery: the baseline system measured at 62.5\% (not 65\% as initially reported), making the dual-agent system's 63.75\% a genuine improvement. The development followed two distinct optimization phases: first saturating accuracy (15\% to 67\%), then improving precision-recall balance through dual-agent architecture. The final system demonstrates that effective AI emerges from understanding both what works and what doesn't, rigorous measurement, and iterative refinement. While 63.75\% accuracy indicates room for improvement, it represents a sophisticated constraint-driven RAG approach balancing accuracy, efficiency, and epistemic honesty within fundamental architectural constraints.
+
+\subsection{Acknowledgments}
+
+This project was developed for KDSH 2026 Track-A, organized by IIT Kharagpur in collaboration with Pathway.
+
+\end{document}

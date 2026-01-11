@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test Set Evaluation - Generates results.csv for submission
+Test Set Evaluation - Dual Agent System (10 chunks, 3-3-4 batches)
 Format: story_id, prediction (1=consistent, 0=inconsistent), rationale
 """
 
@@ -47,54 +47,38 @@ def load_cached_chunks(book_name):
     return chunks
 
 
-def generate_rationale(result, claim_text):
-    """Generate detailed rationale listing all atomic claims with verdicts."""
-    decision = result['final_decision'].upper()
+def generate_rationale(result):
+    """Generate rationale from dual agent evaluation."""
+    method = result.get('method', 'UNKNOWN')
+    explanation = result.get('explanation', 'No explanation')
     atom_details = result.get('atom_details', [])
     
     if not atom_details:
-        return "No atomic claims evaluated"
+        return explanation
     
-    # Build list of claims with verdicts
-    claim_list = []
-    for i, detail in enumerate(atom_details, 1):
-        atom = detail.get('atom', 'Unknown')
-        verdict = detail.get('verdict', 'UNKNOWN')
-        
-        # Shorten atom text if too long
-        if len(atom) > 80:
-            atom = atom[:77] + "..."
-        
-        # Map verdict to simple status
-        if verdict == "SUPPORTED":
-            status = "supported"
-        elif verdict == "HARD_VIOLATION":
-            status = "rejected"
-        elif verdict == "UNSUPPORTED":
-            status = "unsupported"
-        else:
-            status = "no-constraint"
-        
-        claim_list.append(f"Claim {i}: {atom} ({status})")
+    # Count verdicts
+    supported = sum(1 for d in atom_details if d.get('verdict') == 'SUPPORTED')
+    violations = sum(1 for d in atom_details if d.get('verdict') == 'HARD_VIOLATION')
+    unsupported = sum(1 for d in atom_details if d.get('verdict') == 'UNSUPPORTED')
     
-    return "; ".join(claim_list)
+    return f"{explanation}; Atoms: {len(atom_details)} (supported={supported}, violations={violations}, unsupported={unsupported})"
 
 
 def run_test():
-    """Process test set and generate results.csv."""
+    """Process test set with dual agent system."""
     
-    print("=== Test Set Evaluation ===")
-    print("Output format: story_id, prediction (1=consistent, 0=inconsistent), rationale\n")
+    print("=== Dual Agent Test Evaluation (10 chunks, 3-3-4 batches) ===")
+    print("Output: story_id, prediction (1=consistent, 0=inconsistent), rationale\n")
     
     # Load test data
     claims = load_test_data()
     print(f"Loaded {len(claims)} test claims")
     
-    # Initialize semantic index with cached embeddings
+    # Initialize semantic index
     print("Loading semantic index...")
     semantic_index = SemanticIndex()
     
-    # Load cached chunks for both books
+    # Load cached chunks
     books = ['in_search_of_the_castaways', 'the_count_of_monte_cristo']
     
     for book_name in books:
@@ -104,46 +88,42 @@ def run_test():
     
     print(f"\nProcessing {len(claims)} test claims...\n")
     
-    # Process each claim
     results = []
     
     for i, claim in enumerate(claims, 1):
-        print(f"Processing claim {i}/{len(claims)}: {claim['claim_id']}")
+        print(f"Processing {i}/{len(claims)}: {claim['claim_id']}")
         
         try:
-            # Retrieve evidence
+            # Retrieve 10 chunks for dual agent evaluation
             evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=10)
             
-            # Get prediction
+            # Dual agent decision
             result = aggregate_final_decision(claim, evidence_chunks, semantic_index)
             predicted = result['final_decision'].upper()
             
-            # Convert to binary format (1=consistent, 0=inconsistent)
+            # Convert to binary (1=consistent, 0=inconsistent)
             prediction = 1 if predicted == 'CONSISTENT' else 0
             
             # Generate rationale
-            rationale = generate_rationale(result, claim['claim_text'])
+            rationale = generate_rationale(result)
             
-            # Store result
             results.append({
                 'story_id': claim['claim_id'],
                 'prediction': prediction,
                 'rationale': rationale
             })
             
-            print(f"  Predicted: {prediction} ({'CONSISTENT' if prediction == 1 else 'INCONSISTENT'})")
-            print(f"  Rationale: {rationale}\n")
+            print(f"  → {prediction} ({'CONSISTENT' if prediction == 1 else 'INCONSISTENT'})\n")
             
         except Exception as e:
             print(f"  Error: {e}")
-            # Default to consistent on error
             results.append({
                 'story_id': claim['claim_id'],
                 'prediction': 1,
-                'rationale': 'Error during evaluation - defaulted to consistent'
+                'rationale': f'Error: {str(e)}'
             })
     
-    # Write results to CSV
+    # Write results
     output_path = Path("results.csv")
     with open(output_path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=['story_id', 'prediction', 'rationale'])
@@ -151,8 +131,9 @@ def run_test():
         writer.writerows(results)
     
     print(f"\n=== Results saved to {output_path} ===")
-    print(f"Total predictions: {len(results)}")
-    print(f"Format: story_id, prediction (1=consistent, 0=inconsistent), rationale")
+    print(f"Total: {len(results)} predictions")
+    consistent = sum(1 for r in results if r['prediction'] == 1)
+    print(f"Distribution: {consistent} consistent, {len(results) - consistent} inconsistent")
 
 
 if __name__ == "__main__":
