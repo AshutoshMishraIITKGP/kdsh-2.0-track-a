@@ -50,25 +50,17 @@ def load_cached_chunks(book_name):
 def generate_rationale(result, claim_text):
     """Generate detailed rationale from decision result."""
     decision = result['final_decision'].upper()
-    atom_verdicts = result.get('atom_verdicts', [])
+    violation_atoms = result.get('violation_atoms', [])
+    atoms_evaluated = result.get('atoms_evaluated', 0)
     
     if decision == 'CONTRADICT':
-        # Extract violation reasons from atom verdicts
-        violations = []
-        for atom in atom_verdicts:
-            if atom.get('verdict') in ['HARD_VIOLATION', 'UNSUPPORTED']:
-                atom_text = atom.get('atom_text', 'Unknown claim')
-                reason = atom.get('reason', 'No evidence found')
-                violations.append(f"{atom_text}: {reason}")
-        
-        if violations:
+        if violation_atoms:
             # Return first violation as primary reason
-            return violations[0]
+            return f"Violation: {violation_atoms[0]}"
         else:
             return "Narrative inconsistency detected"
     else:
-        # For consistent claims, provide summary
-        return f"All {len(atom_verdicts)} atomic claims supported by narrative evidence"
+        return f"All {atoms_evaluated} atomic claims supported by narrative evidence"
 
 
 def run_test():
@@ -123,7 +115,7 @@ def run_test():
             })
             
             print(f"  Predicted: {prediction} ({'CONSISTENT' if prediction == 1 else 'INCONSISTENT'})")
-            print(f"  Rationale: {rationale}")
+            print(f"  Rationale: {rationale}\n")
             
         except Exception as e:
             print(f"  Error: {e}")

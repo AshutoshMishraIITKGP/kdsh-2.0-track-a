@@ -94,6 +94,7 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
     atoms = atoms[:7]
     
     violations = []
+    atom_details = []
     
     # Evaluate each atom
     for atom in atoms:
@@ -106,6 +107,13 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
         else:
             # Important atoms: use ensemble
             verdict = evaluate_with_ensemble(atom, evidence_chunks)
+        
+        # Store atom details
+        atom_details.append({
+            'atom': atom,
+            'verdict': verdict,
+            'is_violation': verdict == "HARD_VIOLATION" or (is_obligation and verdict != "SUPPORTED")
+        })
         
         # Check for violations
         if verdict == "HARD_VIOLATION":
@@ -122,7 +130,9 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
             "semantic_verdict": None,
             "method": "ENSEMBLE",
             "atoms_evaluated": len(atoms),
-            "violations": len(violations)
+            "violations": len(violations),
+            "atom_details": atom_details,
+            "violation_atoms": violations
         }
     
     # Default to consistent
@@ -133,5 +143,7 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
         "semantic_verdict": None,
         "method": "ENSEMBLE",
         "atoms_evaluated": len(atoms),
-        "violations": 0
+        "violations": 0,
+        "atom_details": atom_details,
+        "violation_atoms": []
     }
