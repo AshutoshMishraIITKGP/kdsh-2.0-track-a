@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test Set Evaluation - Dual Agent System (10 chunks, 3-3-4 batches)
+Test Set Evaluation - Final Model (15 chunks with character/temporal boosting)
 Format: story_id, prediction (1=consistent, 0=inconsistent), rationale
 """
 
@@ -67,7 +67,7 @@ def generate_rationale(result):
 def run_test():
     """Process test set with dual agent system."""
     
-    print("=== Dual Agent Test Evaluation (10 chunks, 1-3-6 batches) ===")
+    print("=== Final Model Test Evaluation (15 chunks, 1-3-6 batches) ===")
     print("Output: story_id, prediction (1=consistent, 0=inconsistent), rationale\n")
     
     # Load test data
@@ -99,11 +99,11 @@ def run_test():
         print(f"Claim: {claim_text[:60]}...")
         
         try:
-            # Retrieve 10 chunks
-            evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=10)
+            # Retrieve 15 chunks with character/temporal boosting
+            evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=15)
             print(f"Retrieved: {len(evidence_chunks)} chunks")
             
-            # Dual agent decision
+            # Final model decision (3-perspective ensemble)
             result = aggregate_final_decision(claim, evidence_chunks, semantic_index)
             predicted = result['final_decision'].upper()
             
