@@ -17,16 +17,17 @@ class ClaimDecomposer:
         self.client = Mistral(api_key=api_key)
         
         self.prompt_template = """Given a backstory claim, extract the minimal atomic facts it assumes.
+Focus on SEMANTIC MEANING - extract the core facts that can be verified.
 Do NOT paraphrase. Output a bullet list.
 
 CLAIM: {claim_text}
 
-Extract atomic facts (one per line, starting with •):
+Extract atomic facts based on semantic meaning (one per line, starting with •):
 • [atomic fact 1]
 • [atomic fact 2]
 • [etc.]
 
-Keep facts simple and testable against text."""
+Keep facts simple, testable, and focused on verifiable semantic content."""
     
     def decompose_claim(self, claim_text: str) -> List[str]:
         """

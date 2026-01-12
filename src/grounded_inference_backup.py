@@ -16,103 +16,77 @@ class GroundedInference:
         
         self.client = Mistral(api_key=api_key)
         
-        self.prompt_template = """You are a Forensic Auditor. Your goal is to find LIES and CONTRADICTIONS based on SEMANTIC MEANING.
+        self.prompt_template = """You are a Forensic Auditor. Your goal is to find LIES and CONTRADICTIONS.
 
 STRICT RULES:
 
-1. FOCUS ON SEMANTIC MEANING, NOT EXACT WORDS
-   - Evaluate based on what the text MEANS, not literal words
-   - Same meaning = SUPPORTED, even with different words
-   - Different meaning = HARD_VIOLATION, even with similar words
-   - Implicit meaning counts: understand what statements imply
+1. COMPETING FACT = HARD_VIOLATION
+   - If text explicitly states a DIFFERENT value, mark HARD_VIOLATION
+   - Example: Claim says 'Tasmania', Text says 'New Zealand' -> HARD_VIOLATION
+   - Example: Claim says 'Royalist', Text says 'Bonapartist' -> HARD_VIOLATION
+   - Example: Claim says 'arrested in 1815', Text says 'arrested in 1814' -> HARD_VIOLATION
 
-2. COMPETING FACT = HARD_VIOLATION
-   - If text states a DIFFERENT semantic value, mark HARD_VIOLATION
-   - Different locations, dates, affiliations, causes = HARD_VIOLATION
-   - Be aggressive on factual contradictions
-
-3. UNDERSTAND PARAPHRASE AND SEMANTIC EQUIVALENCE
+2. UNDERSTAND PARAPHRASE AND GRAMMAR VARIATIONS
    - Same meaning with different words = SUPPORTED
    - "arrested" = "taken into custody" = "imprisoned" = "detained"
    - "met" = "encountered" = "came across" = "was introduced to"
-   - "fled" = "escaped" = "ran away" = "sought refuge"
-   - Active vs passive voice is the SAME: "X arrested Y" = "Y was arrested by X"
+   - "fled to" = "escaped to" = "ran away to" = "sought refuge in"
+   - Active vs passive voice is the SAME fact: "He arrested X" = "X was arrested by him"
+   - Past vs present tense describing same event is the SAME fact
    - Different sentence structure but same meaning = SUPPORTED
 
-4. CAPTURE IMPLICIT MEANING
-   - Political affiliations imply ideological positions
-   - Actions imply motivations and allegiances
-   - Relationships imply interactions and connections
-   - Use context to understand implications
-   - If claim's implicit meaning matches text's implicit meaning = SUPPORTED
-
-5. GEOGRAPHIC/POLITICAL CONTRADICTIONS
-   - Different specific locations ARE contradictions
+3. GEOGRAPHIC/POLITICAL CONTRADICTIONS
+   - Different locations ARE contradictions (Tasmania vs New Zealand)
    - BUT: General region vs specific location is NOT contradiction
-     - Broader region containing specific location = compatible
-   - Different political affiliations ARE contradictions
-   - Different causes/reasons ARE contradictions
+     - "Australia" and "Tasmania" can coexist (Tasmania is in Australia)
+     - "Europe" and "France" can coexist (France is in Europe)
+   - Different political affiliations ARE contradictions (Royalist vs Bonapartist)
+   - Be aggressive on factual contradictions
 
-6. SILENCE IS UNSUPPORTED
-   - If detail is NOT MENTIONED (explicitly or implicitly), mark UNSUPPORTED
-   - Missing information = UNSUPPORTED (not HARD_VIOLATION)
-   - Only mark HARD_VIOLATION when competing fact exists
+4. SILENCE IS UNSUPPORTED
+   - If detail is NOT MENTIONED, mark UNSUPPORTED
+   - Major events missing = UNSUPPORTED (not HARD_VIOLATION)
 
-7. SUPPORTED REQUIRES SEMANTIC MATCH
-   - Text must convey the same MEANING (not same words)
-   - Accept paraphrase, synonyms, grammar changes, implicit statements
-   - Focus on whether the core meaning is preserved
+5. SUPPORTED REQUIRES SIMILAR MEANING MATCH
+   - Text must state the same MEANING (not same words)
+   - Accept paraphrase, synonyms, grammar changes
+   - "He was arrested in Paris" = "Paris authorities detained him" = SUPPORTED
 
 CATEGORIES:
-- SUPPORTED: Text conveys the same MEANING (explicit or implicit)
-- HARD_VIOLATION: Text conveys a DIFFERENT meaning (competing fact)
-- UNSUPPORTED: Claim adds details not in text (no semantic match)
+- SUPPORTED: Text confirms the same MEANING (accept paraphrase/grammar changes)
+- HARD_VIOLATION: Text states a DIFFERENT value (be aggressive)
+- UNSUPPORTED: Claim adds details not in text
 - NO_CONSTRAINT: Pure opinion/emotion
-
-KEY PRINCIPLE: Evaluate SEMANTIC MEANING, not surface text. Accept implicit equivalence.
 
 EXAMPLES:
 
-Claim: "The captain discovered the conspiracy"
-Text: "The captain uncovered the plot"
-Result: SUPPORTED (discovered = uncovered, conspiracy = plot, same semantic meaning)
+Claim: "Mutiny began when Grant uncovered forged logbook"
+Text: "Grant's discovery of the forged logbook triggered the mutiny"
+Result: SUPPORTED (same meaning, different grammar)
 
-Claim: "He was loyal to the king"
-Text: "He was a devoted royalist"
-Result: SUPPORTED (loyal to king = royalist, same implicit meaning)
+Claim: "He was arrested in Paris"
+Text: "Paris authorities detained him"
+Result: SUPPORTED (arrested = detained)
 
-Claim: "The prisoner escaped from the fortress"
-Text: "The captive fled the stronghold"
-Result: SUPPORTED (prisoner = captive, escaped = fled, fortress = stronghold)
+Claim: "He was in Tasmania"
+Text: "The convict escaped in Australia"
+Result: SUPPORTED (Tasmania is in Australia)
 
-Claim: "He traveled to France"
-Text: "He journeyed to Paris"
-Result: SUPPORTED (Paris is in France - semantically compatible)
+Claim: "He was in Tasmania"
+Text: "He fled to New Zealand"
+Result: HARD_VIOLATION (New Zealand contradicts Tasmania)
 
-Claim: "He traveled to France"
-Text: "He journeyed to Spain"
-Result: HARD_VIOLATION (Spain contradicts France - different countries)
-
-Claim: "The voyage began in 1865"
-Text: "The expedition started in 1864"
-Result: HARD_VIOLATION (1864 contradicts 1865 - different dates)
-
-Claim: "He supported the revolution"
-Text: "He opposed the revolutionary movement"
-Result: HARD_VIOLATION (supported vs opposed - opposite positions)
-
-Claim: "He had a sister"
-Text: "He grew up with his family"
-Result: UNSUPPORTED (sister not mentioned explicitly or implicitly)
+Claim: "Noirtier was a Royalist"
+Text: "Noirtier was a fervent Bonapartist"
+Result: HARD_VIOLATION (Bonapartist contradicts Royalist)
 
 CLAIM: {claim_text}
 
 TEXT: {evidence_chunks}
 
-Evaluate based on SEMANTIC MEANING. Does the text convey the same meaning (explicitly or implicitly)?
-Or does it convey a DIFFERENT meaning (contradiction)?
+Does the text contain a COMPETING FACT? Accept paraphrase and grammar variations.
 VERDICT: [SUPPORTED/HARD_VIOLATION/UNSUPPORTED/NO_CONSTRAINT]
-REASON: [Brief explanation focusing on semantic meaning]"""
+REASON: [Brief explanation]"""
     
     def format_evidence(self, evidence_chunks: List[Dict[str, str]]) -> str:
         """Format evidence chunks for the prompt."""

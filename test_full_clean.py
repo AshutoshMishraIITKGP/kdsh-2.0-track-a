@@ -52,7 +52,7 @@ def load_cached_chunks(book_name):
 def test_full_flow():
     """Test with dual agent system (contradiction + consistency)."""
     
-    print("=== Dual Agent System: 10 Chunks (3-3-4 batches) ===\n")
+    print("=== Dual Agent System: 15 Chunks (5-5-5 batches) ===\n")
     
     # Load training data
     claims = load_train_data()
@@ -93,8 +93,8 @@ def test_full_flow():
         print(f"Claim: {claim_text[:60]}...")
         print(f"True label: {claim['true_label']}")
         
-        # Step 1: Retrieve 10 chunks for dual agent evaluation
-        evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=10)
+        # Step 1: Retrieve 15 chunks for better coverage
+        evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=15)
         print(f"Retrieved: {len(evidence_chunks)} chunks")
         
         # Step 2: Dual agent decision (contradiction + consistency agents)

@@ -100,8 +100,8 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
     # Classify claim
     claim_classification = classify_claim(claim_text, atoms)
     
-    # Progressive evaluation in batches: 3, 3, 4
-    batch_sizes = [3, 3, 4]
+    # Progressive evaluation in batches: 5, 5, 5 (15 chunks total)
+    batch_sizes = [5, 5, 5]
     start_idx = 0
     
     contradict_batch = None
@@ -151,7 +151,7 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
             if verdict == "SUPPORTED":
                 supports.append({'atom': atom, 'reason': reason})
         
-        # Track first batch with contradictions
+        # Track first batch with contradictions (1+ violations)
         if len(violations) > 0 and contradict_batch is None:
             contradict_batch = batch_num + 1
             contradict_result = {
@@ -209,7 +209,7 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
         # No evidence found
         return {
             "final_decision": "consistent",
-            "explanation": "No violations or support found in 10 chunks",
+            "explanation": "No violations or support found in 15 chunks",
             "grounded_verdict": "CONSISTENT",
             "semantic_verdict": None,
             "method": "ENSEMBLE_DEFAULT",
@@ -219,5 +219,5 @@ def aggregate_final_decision(claim: Dict[str, str], evidence_chunks: List[Dict[s
             "violation_atoms": [],
             "expected_evidence": claim_classification['expected_evidence'],
             "batch_evaluated": 3,
-            "chunks_examined": 10
+            "chunks_examined": 15
         }
