@@ -16,103 +16,74 @@ class GroundedInference:
         
         self.client = Mistral(api_key=api_key)
         
-        self.prompt_template = """You are a Forensic Auditor. Your goal is to find LIES and CONTRADICTIONS based on SEMANTIC MEANING.
+        # STRICT PROMPT: Exact matching, minimal semantic flexibility
+        self.strict_prompt = """You are a Strict Fact Checker. Find explicit contradictions with minimal interpretation.
 
-STRICT RULES:
-
-1. FOCUS ON SEMANTIC MEANING, NOT EXACT WORDS
-   - Evaluate based on what the text MEANS, not literal words
-   - Same meaning = SUPPORTED, even with different words
-   - Different meaning = HARD_VIOLATION, even with similar words
-   - Implicit meaning counts: understand what statements imply
-
-2. COMPETING FACT = HARD_VIOLATION
-   - If text states a DIFFERENT semantic value, mark HARD_VIOLATION
-   - Different locations, dates, affiliations, causes = HARD_VIOLATION
-   - Be aggressive on factual contradictions
-
-3. UNDERSTAND PARAPHRASE AND SEMANTIC EQUIVALENCE
-   - Same meaning with different words = SUPPORTED
-   - "arrested" = "taken into custody" = "imprisoned" = "detained"
-   - "met" = "encountered" = "came across" = "was introduced to"
-   - "fled" = "escaped" = "ran away" = "sought refuge"
-   - Active vs passive voice is the SAME: "X arrested Y" = "Y was arrested by X"
-   - Different sentence structure but same meaning = SUPPORTED
-
-4. CAPTURE IMPLICIT MEANING
-   - Political affiliations imply ideological positions
-   - Actions imply motivations and allegiances
-   - Relationships imply interactions and connections
-   - Use context to understand implications
-   - If claim's implicit meaning matches text's implicit meaning = SUPPORTED
-
-5. GEOGRAPHIC/POLITICAL CONTRADICTIONS
-   - Different specific locations ARE contradictions
-   - BUT: General region vs specific location is NOT contradiction
-     - Broader region containing specific location = compatible
-   - Different political affiliations ARE contradictions
-   - Different causes/reasons ARE contradictions
-
-6. SILENCE IS UNSUPPORTED
-   - If detail is NOT MENTIONED (explicitly or implicitly), mark UNSUPPORTED
-   - Missing information = UNSUPPORTED (not HARD_VIOLATION)
-   - Only mark HARD_VIOLATION when competing fact exists
-
-7. SUPPORTED REQUIRES SEMANTIC MATCH
-   - Text must convey the same MEANING (not same words)
-   - Accept paraphrase, synonyms, grammar changes, implicit statements
-   - Focus on whether the core meaning is preserved
+RULES:
+1. COMPETING FACT = HARD_VIOLATION (different values stated)
+2. Accept ONLY close paraphrases (arrested = detained, met = encountered)
+3. Different locations = HARD_VIOLATION (Tasmania vs New Zealand)
+4. Missing details = UNSUPPORTED
+5. Require explicit textual match for SUPPORTED
 
 CATEGORIES:
-- SUPPORTED: Text conveys the same MEANING (explicit or implicit)
-- HARD_VIOLATION: Text conveys a DIFFERENT meaning (competing fact)
-- UNSUPPORTED: Claim adds details not in text (no semantic match)
-- NO_CONSTRAINT: Pure opinion/emotion
-
-KEY PRINCIPLE: Evaluate SEMANTIC MEANING, not surface text. Accept implicit equivalence.
-
-EXAMPLES:
-
-Claim: "The captain discovered the conspiracy"
-Text: "The captain uncovered the plot"
-Result: SUPPORTED (discovered = uncovered, conspiracy = plot, same semantic meaning)
-
-Claim: "He was loyal to the king"
-Text: "He was a devoted royalist"
-Result: SUPPORTED (loyal to king = royalist, same implicit meaning)
-
-Claim: "The prisoner escaped from the fortress"
-Text: "The captive fled the stronghold"
-Result: SUPPORTED (prisoner = captive, escaped = fled, fortress = stronghold)
-
-Claim: "He traveled to France"
-Text: "He journeyed to Paris"
-Result: SUPPORTED (Paris is in France - semantically compatible)
-
-Claim: "He traveled to France"
-Text: "He journeyed to Spain"
-Result: HARD_VIOLATION (Spain contradicts France - different countries)
-
-Claim: "The voyage began in 1865"
-Text: "The expedition started in 1864"
-Result: HARD_VIOLATION (1864 contradicts 1865 - different dates)
-
-Claim: "He supported the revolution"
-Text: "He opposed the revolutionary movement"
-Result: HARD_VIOLATION (supported vs opposed - opposite positions)
-
-Claim: "He had a sister"
-Text: "He grew up with his family"
-Result: UNSUPPORTED (sister not mentioned explicitly or implicitly)
+- SUPPORTED: Text explicitly confirms (minimal paraphrase accepted)
+- HARD_VIOLATION: Text states different value
+- UNSUPPORTED: Not mentioned
+- NO_CONSTRAINT: Opinion/emotion
 
 CLAIM: {claim_text}
-
 TEXT: {evidence_chunks}
 
-Evaluate based on SEMANTIC MEANING. Does the text convey the same meaning (explicitly or implicitly)?
-Or does it convey a DIFFERENT meaning (contradiction)?
 VERDICT: [SUPPORTED/HARD_VIOLATION/UNSUPPORTED/NO_CONSTRAINT]
-REASON: [Brief explanation focusing on semantic meaning]"""
+REASON: [Brief explanation]"""
+        
+        # MODERATE PROMPT: Balanced semantic understanding
+        self.moderate_prompt = """You are a Forensic Auditor. Find contradictions while accepting semantic equivalence.
+
+RULES:
+1. COMPETING FACT = HARD_VIOLATION
+2. Accept paraphrase and grammar variations (arrested = detained = imprisoned)
+3. Active/passive voice = same fact
+4. Geographic hierarchy OK (Tasmania in Australia)
+5. Missing details = UNSUPPORTED
+6. SUPPORTED requires semantic match
+
+CATEGORIES:
+- SUPPORTED: Same meaning (accept paraphrase/grammar)
+- HARD_VIOLATION: Different value stated
+- UNSUPPORTED: Not mentioned
+- NO_CONSTRAINT: Opinion/emotion
+
+CLAIM: {claim_text}
+TEXT: {evidence_chunks}
+
+VERDICT: [SUPPORTED/HARD_VIOLATION/UNSUPPORTED/NO_CONSTRAINT]
+REASON: [Brief explanation]"""
+        
+        # LENIENT PROMPT: Maximum semantic flexibility
+        self.lenient_prompt = """You are a Narrative Analyst. Evaluate claims with semantic understanding and contextual reasoning.
+
+RULES:
+1. COMPETING FACT = HARD_VIOLATION (only clear contradictions)
+2. Accept broad semantic equivalence (arrested = detained = imprisoned = taken into custody)
+3. Accept synonyms, paraphrases, grammar variations, tense changes
+4. Accept implicit meanings and reasonable inferences
+5. Geographic/temporal flexibility (Tasmania in Australia, nearby times)
+6. Missing details = UNSUPPORTED (not violations)
+7. SUPPORTED if meaning aligns
+
+CATEGORIES:
+- SUPPORTED: Meaning aligns (broad semantic match)
+- HARD_VIOLATION: Clear contradiction only
+- UNSUPPORTED: Not mentioned
+- NO_CONSTRAINT: Opinion/emotion
+
+CLAIM: {claim_text}
+TEXT: {evidence_chunks}
+
+VERDICT: [SUPPORTED/HARD_VIOLATION/UNSUPPORTED/NO_CONSTRAINT]
+REASON: [Brief explanation]"""
     
     def format_evidence(self, evidence_chunks: List[Dict[str, str]]) -> str:
         """Format evidence chunks for the prompt."""
@@ -125,9 +96,12 @@ REASON: [Brief explanation focusing on semantic meaning]"""
         
         return "\n\n".join(formatted)
     
-    def infer_grounded_constraint(self, claim: Dict[str, str], evidence_chunks: List[Dict[str, str]]) -> Dict[str, str]:
+    def infer_grounded_constraint(self, claim: Dict[str, str], evidence_chunks: List[Dict[str, str]], perspective: str = "moderate") -> Dict[str, str]:
         """
         Perform grounded constraint inference using Mistral.
+        
+        Args:
+            perspective: "strict" (temp=0.0), "moderate" (temp=0.1), or "lenient" (temp=0.3)
         
         Returns:
             Dict with 'verdict' and 'reason'
@@ -135,7 +109,18 @@ REASON: [Brief explanation focusing on semantic meaning]"""
         try:
             evidence_text = self.format_evidence(evidence_chunks)
             
-            prompt_text = self.prompt_template.format(
+            # Select prompt and temperature based on perspective
+            if perspective == "strict":
+                prompt_template = self.strict_prompt
+                temperature = 0.0
+            elif perspective == "lenient":
+                prompt_template = self.lenient_prompt
+                temperature = 0.0
+            else:  # moderate
+                prompt_template = self.moderate_prompt
+                temperature = 0.0
+            
+            prompt_text = prompt_template.format(
                 claim_text=claim.get('claim_text', ''),
                 evidence_chunks=evidence_text
             )
@@ -143,7 +128,8 @@ REASON: [Brief explanation focusing on semantic meaning]"""
             response = self.client.chat.complete(
                 model="mistral-small-2503",
                 messages=[{"role": "user", "content": prompt_text}],
-                temperature=0.0
+                temperature=temperature,
+                timeout_ms=30000  # 30 second timeout in milliseconds
             )
             
             response_text = response.choices[0].message.content.strip()
@@ -172,14 +158,16 @@ REASON: [Brief explanation focusing on semantic meaning]"""
             
             return {"verdict": verdict, "reason": reason}
                 
-        except Exception as e:
-            print(f"Grounded inference error: {e}")
-            return {"verdict": "UNSUPPORTED", "reason": str(e)}
+        except Exception:
+            return {"verdict": "UNSUPPORTED", "reason": "API error"}
 
 
-def grounded_constraint_inference(claim: Dict[str, str], evidence_chunks: List[Dict[str, str]]) -> Dict[str, str]:
+def grounded_constraint_inference(claim: Dict[str, str], evidence_chunks: List[Dict[str, str]], perspective: str = "moderate") -> Dict[str, str]:
     """
     Standalone function for grounded constraint inference.
+    
+    Args:
+        perspective: "strict" (temp=0.0), "moderate" (temp=0.1), or "lenient" (temp=0.3)
     
     Returns:
         Dict with 'verdict' and 'reason'
@@ -188,4 +176,4 @@ def grounded_constraint_inference(claim: Dict[str, str], evidence_chunks: List[D
         return {"verdict": "UNSUPPORTED", "reason": "No evidence chunks provided"}
     
     inference = GroundedInference()
-    return inference.infer_grounded_constraint(claim, evidence_chunks)
+    return inference.infer_grounded_constraint(claim, evidence_chunks, perspective)

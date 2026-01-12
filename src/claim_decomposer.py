@@ -16,25 +16,38 @@ class ClaimDecomposer:
             
         self.client = Mistral(api_key=api_key)
         
-        self.prompt_template = """Given a backstory claim, extract the minimal atomic facts it assumes.
-Focus on SEMANTIC MEANING - extract the core facts that can be verified.
-Do NOT paraphrase. Output a bullet list.
+        self.prompt_template = """Given a backstory claim, extract 8-10 PLOT-CRITICAL atomic facts.
+Focus on facts that can be CONTRADICTED by canon (ignore obvious/trivial facts).
+Prioritize: Names, Locations, Dates, Events, Relationships, Causes.
 
 CLAIM: {claim_text}
 
-Extract atomic facts based on semantic meaning (one per line, starting with •):
+Extract 8-10 plot-critical atomic facts (one per line, starting with •):
 • [atomic fact 1]
 • [atomic fact 2]
 • [etc.]
 
-Keep facts simple, testable, and focused on verifiable semantic content."""
+PRIORITIZE:
+- Named entities (people, places, organizations)
+- Specific dates/years
+- Major events (arrest, death, meeting, betrayal)
+- Relationships (father, brother, met X)
+- Causes/reasons (because of X, triggered by Y)
+- Locations (Madrid, Paris, Tasmania)
+
+IGNORE:
+- Generic facts ("He was a person", "The event happened")
+- Obvious implications
+- Pure adjectives without plot impact
+
+Focus on VERIFIABLE, PLOT-CRITICAL facts that could contradict canon."""
     
     def decompose_claim(self, claim_text: str) -> List[str]:
         """
-        Decompose a complex claim into atomic facts.
+        Decompose a complex claim into 8-10 plot-critical atomic facts.
         
         Returns:
-            List of atomic fact strings
+            List of plot-critical atomic fact strings (target: 8-10 facts)
         """
         try:
             prompt_text = self.prompt_template.format(claim_text=claim_text)

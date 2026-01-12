@@ -67,7 +67,7 @@ def generate_rationale(result):
 def run_test():
     """Process test set with dual agent system."""
     
-    print("=== Dual Agent Test Evaluation (15 chunks, 5-5-5 batches) ===")
+    print("=== Dual Agent Test Evaluation (10 chunks, 1-3-6 batches) ===")
     print("Output: story_id, prediction (1=consistent, 0=inconsistent), rationale\n")
     
     # Load test data
@@ -89,13 +89,19 @@ def run_test():
     print(f"\nProcessing {len(claims)} test claims...\n")
     
     results = []
+    correct = 0
+    total = 0
     
     for i, claim in enumerate(claims, 1):
-        print(f"Processing {i}/{len(claims)}: {claim['claim_id']}")
+        print(f"--- Claim {i}: ID {claim['claim_id']} ---")
+        print(f"Character: {claim['character']}")
+        claim_text = claim['claim_text'].encode('ascii', 'ignore').decode('ascii')
+        print(f"Claim: {claim_text[:60]}...")
         
         try:
-            # Retrieve 15 chunks for better coverage
-            evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=15)
+            # Retrieve 10 chunks
+            evidence_chunks = semantic_index.semantic_retrieve(claim, max_chunks=10)
+            print(f"Retrieved: {len(evidence_chunks)} chunks")
             
             # Dual agent decision
             result = aggregate_final_decision(claim, evidence_chunks, semantic_index)
@@ -107,21 +113,27 @@ def run_test():
             # Generate rationale
             rationale = generate_rationale(result)
             
+            print(f"Predicted: {predicted}")
+            print(f"Method: {result.get('method', 'UNKNOWN')}")
+            print(f"Explanation: {result.get('explanation', 'No explanation')}")
+            
             results.append({
                 'story_id': claim['claim_id'],
                 'prediction': prediction,
                 'rationale': rationale
             })
             
-            print(f"  → {prediction} ({'CONSISTENT' if prediction == 1 else 'INCONSISTENT'})\n")
+            total += 1
+            print()
             
         except Exception as e:
-            print(f"  Error: {e}")
+            print(f"Error: {e}")
             results.append({
                 'story_id': claim['claim_id'],
                 'prediction': 1,
                 'rationale': f'Error: {str(e)}'
             })
+            print()
     
     # Write results
     output_path = Path("results.csv")
@@ -130,10 +142,12 @@ def run_test():
         writer.writeheader()
         writer.writerows(results)
     
-    print(f"\n=== Results saved to {output_path} ===")
+    print(f"\n=== RESULTS ===")
     print(f"Total: {len(results)} predictions")
     consistent = sum(1 for r in results if r['prediction'] == 1)
-    print(f"Distribution: {consistent} consistent, {len(results) - consistent} inconsistent")
+    inconsistent = len(results) - consistent
+    print(f"Distribution: {consistent} consistent ({consistent/len(results)*100:.1f}%), {inconsistent} inconsistent ({inconsistent/len(results)*100:.1f}%)")
+    print(f"\nResults saved to {output_path}")
 
 
 if __name__ == "__main__":

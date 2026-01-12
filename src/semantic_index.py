@@ -128,8 +128,8 @@ class SemanticIndex:
         
         return results
     
-    def semantic_retrieve(self, claim: Dict[str, str], max_chunks: int = 30) -> List[Dict[str, str]]:
-        """Retrieve evidence chunks for grounded verification with character filtering."""
+    def semantic_retrieve(self, claim: Dict[str, str], max_chunks: int = 10) -> List[Dict[str, str]]:
+        """Retrieve evidence chunks with character boost and temporal filtering."""
         claim_text = claim.get('claim_text', '')
         book_name = claim.get('book_name', '')
         character = claim.get('character', '')
@@ -144,27 +144,41 @@ class SemanticIndex:
         if not book_id or book_id not in self.chunks_by_book:
             return []
         
-        # Get all chunks for the book
+        # Extract year from claim for temporal filtering
+        import re
+        years = re.findall(r'\b(18\d{2}|19\d{2})\b', claim_text)
+        
+        # Get more chunks for filtering (3x)
         all_results = self.semantic_search(claim_text, book_id=book_id, top_k=max_chunks * 3)
         
-        # Filter by character presence
-        character_filtered = []
+        # Character names for filtering
         character_names = [character.lower()]
         if '/' in character:
             character_names.extend([name.strip().lower() for name in character.split('/')])
         
-        for chunk in all_results:
+        # Score and rank chunks with character boost (2x) and temporal boost (1.5x)
+        scored_chunks = []
+        for idx, chunk in enumerate(all_results):
             text_lower = chunk['text'].lower()
+            
+            # Base score (inverse rank)
+            score = 1.0 / (idx + 1)
+            
+            # B. Character-Specific Retrieval Boost (2x)
             if any(name in text_lower for name in character_names):
-                character_filtered.append(chunk)
-                if len(character_filtered) >= max_chunks:
-                    break
+                score *= 2.0
+            
+            # C. Temporal Filtering (1.5x boost if year matches)
+            if years:
+                chunk_years = re.findall(r'\b(18\d{2}|19\d{2})\b', chunk['text'])
+                if any(year in chunk_years for year in years):
+                    score *= 1.5
+            
+            scored_chunks.append((score, chunk))
         
-        # If character filtering yields too few results, fall back to semantic only
-        if len(character_filtered) < max_chunks // 2:
-            return all_results[:max_chunks]
-        
-        return character_filtered
+        # Sort by score and return top chunks
+        scored_chunks.sort(key=lambda x: x[0], reverse=True)
+        return [chunk for score, chunk in scored_chunks[:max_chunks]]
     
     def semantic_neighborhood_retrieve(self, claim: Dict[str, str], top_k: int = 20) -> List[Dict[str, str]]:
         """Retrieve semantic neighborhood for claim-centric evaluation (15-25 chunks)."""
